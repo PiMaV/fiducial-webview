@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Calibration (Rulers)</title>
+  <style>
+    :root { --bg: #0f0f12; --surface: #1a1a20; --border: #2a2a32; --accent: #00d4aa; --text: #e8e8ec; --muted: #888; --error: #e05555; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "JetBrains Mono", monospace; background: var(--bg); color: var(--text); min-height: 100vh; padding: 1rem; display: flex; flex-direction: column; align-items: center; }
+    h1 { font-size: 1.2rem; color: var(--accent); margin-bottom: 0.5rem; }
+    .sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
+    a { color: var(--accent); }
+    .viewport { width: 100%; max-width: 900px; aspect-ratio: 16/9; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative; }
+    #video { display: block; width: 100%; height: 100%; object-fit: contain; }
+    #overlay { position: absolute; inset: 0; pointer-events: none; width: 100%; height: 100%; object-fit: contain; }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; justify-content: center; align-items: center; }
+    button { font-family: inherit; padding: 0.6rem 1.2rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    select { font-family: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+    .status { margin: 0.5rem 0; font-size: 0.9rem; color: var(--muted); }
+    .result { margin-top: 1rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-family: monospace; font-size: 0.9rem; max-width: 500px; }
+    .result .row { margin: 0.25rem 0; }
+    .stored-section { margin-top: 1.5rem; width: 100%; max-width: 500px; }
+    .stored-section h3 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.5rem; }
+    .stored-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .stored-table th, .stored-table td { padding: 0.4rem 0.6rem; text-align: left; }
+    .stored-table th { background: var(--border); color: var(--muted); }
+    .stored-table tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+    .stored-table .empty { color: var(--muted); font-style: italic; }
+    .sample-verify-row { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-top: 1rem; width: 100%; max-width: 900px; }
+    .sample-log, .result-wrap { flex: 0 1 auto; min-width: 260px; max-width: 420px; }
+    .sample-log h3 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.5rem; }
+    .sample-log ul { margin: 0; padding-left: 1.2rem; font-size: 0.85rem; color: var(--muted); }
+    .sample-timeline-wrap { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .sample-timeline { display: block; background: var(--bg); border-radius: 4px; }
+    .live-z-val { margin-left: 0.25rem; font-variant-numeric: tabular-nums; color: rgba(224, 112, 64, 1); min-width: 4em; }
+    .verify-section { flex: 0 1 auto; min-width: 260px; max-width: 420px; }
+    .verify-section h3 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.5rem; }
+    .verify-grid { padding: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; }
+    .verify-row { margin: 0.35rem 0; }
+    .verify-soll { margin-left: 0.5rem; color: var(--muted); font-size: 0.85em; }
+    .verify-soll.has-soll { color: var(--accent); }
+    .verify-soll.has-abw { font-weight: bold; }
+    .verify-manual { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+    .verify-sparkline-wrap { margin-top: 0.5rem; display: flex; align-items: flex-start; gap: 0.5rem; }
+    .verify-spark-inline { display: flex; align-items: center; gap: 0.5rem; }
+    .verify-sparkline { display: block; background: var(--bg); border-radius: 4px; }
+    .verify-mean { margin-left: 0.5rem; font-variant-numeric: tabular-nums; color: var(--accent); }
+    .credits { margin: 2.5rem auto 0 auto; padding: 0.75rem 1rem; max-width: 30rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.75rem; line-height: 1.35; text-align: left; }
+    .credits h2 { font-size: 0.8rem; color: var(--accent); margin: 0 0 0.35rem 0; }
+    .credits ul { margin: 0 0 0.5rem 0; padding-left: 1rem; }
+    .credits li { margin-bottom: 0.15rem; }
+    .credits a { color: var(--accent); text-decoration: none; }
+    .credits a:hover { text-decoration: underline; }
+    .credits .refs { margin-top: 0.5rem; }
+    .footer-by { margin-top: 0.75rem; padding-bottom: 0.5rem; font-size: 1.2rem; color: var(--muted); text-align: center; }
+    .footer-by a { color: var(--accent); text-decoration: none; }
+    .footer-by a:hover { text-decoration: underline; }
+    footer.meta { width: 100%; display: flex; flex-direction: column; align-items: center; padding-bottom: 0.75rem; }
+    .source-link { display: inline-block; padding: 0.35rem 0.85rem; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.9rem; text-decoration: none; transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s; }
+    .source-link:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px rgba(0, 255, 200, 0.14); transform: translateY(-1px); }
+    .source-link:active { transform: translateY(0); }
+    .source-link-wrap { text-align: center; margin-top: 1.25rem; }
+  </style>
+</head>
+<body>
+  <h1>Camera Calibration (Rulers)</h1>
+  <p class="sub">Put the ruler close to the cam and then move away from the cam. Auto-collect on stability. Confidence reached → Calibrate. Calibration is per resolution; change resolution → recalibrate.</p>
+  <a href="debug-pose.html">← Debug-Pose</a>
+
+  <div class="viewport">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <div class="controls">
+    <button id="btnStart" class="primary" title="Start camera, keep ruler visible">Start camera</button>
+    <button id="btnStop" disabled title="Stop camera">Stop</button>
+    <label title="Frames of stability before auto-save"><span class="muted">Stable:</span> <input type="number" id="stabilWindow" min="5" max="60" value="15" style="width:3em;"></label>
+    <label title="Min. Z-distance between samples (mm)"><span class="muted">Δz min:</span> <input type="number" id="minZDelta" min="20" max="200" value="50" style="width:3em;"></label>
+    <label title="Min. samples for confidence (more can be added by keeping ruler in view)"><span class="muted">Min:</span> <input type="number" id="minSamples" min="3" max="30" value="3" style="width:2.5em;"></label>
+    <label title="Video resolution – applies after restart. Calibration is per resolution."><span class="muted">Resolution:</span>
+      <select id="resolutionSelect">
+        <option value="640">640×480 (default)</option>
+        <option value="720">1280×720</option>
+        <option value="1080">1920×1080</option>
+      </select>
+    </label>
+    <button id="btnCollect" disabled title="Add current frame as sample manually">Manual sample</button>
+    <button id="btnCalib" disabled title="Compute K-matrix from collected samples">Calibrate</button>
+    <button id="btnSave" disabled title="Save calibration to browser (localStorage)">Save</button>
+  </div>
+  <p class="status" id="status">Start camera, keep ruler visible.</p>
+  <div class="sample-verify-row">
+  <div class="sample-log" id="sampleLog" style="display:none;">
+    <h3>Samples</h3>
+    <div class="sample-timeline-wrap">
+      <span class="muted">Z (mm) IST:</span>
+      <span id="liveZDisplay" class="live-z-val">—</span>
+      <canvas id="sampleTimeline" class="sample-timeline" width="400" height="32" title="Samples along depth (0–600 mm)"></canvas>
+    </div>
+    <ul id="sampleLogList"></ul>
+  </div>
+  <div class="result result-wrap" id="result" style="display:none;">
+    <div class="row">fx: <span id="outFx">—</span> fy: <span id="outFy">—</span></div>
+    <div class="row">cx: <span id="outCx">—</span> cy: <span id="outCy">—</span></div>
+    <div class="row">Scale factor: <span id="outScale">—</span></div>
+    <div class="row" style="margin-top:0.5rem;color:var(--muted);">Error (mm²): <span id="outErr">—</span></div>
+  </div>
+
+  <div class="verify-section" id="verifySection" style="display:none;">
+    <h3>Verification / Distance</h3>
+    <p class="sub" style="margin:0 0 0.5rem 0;">Euclidean 3D. d & dev = smoothing (window). Spark = same window, M = ~2.5s mean.</p>
+    <div class="verify-grid">
+      <div class="verify-row"><span class="muted">Image:</span> <span id="verifyRes">—</span></div>
+      <div class="verify-row"><span class="muted">Markers:</span> <span id="verifyMarkerIds">—</span></div>
+      <div class="verify-row" id="verifyRulerRow">
+        <span class="muted">d(1↔max):</span> <span id="verifyD1Max">—</span>
+        <span id="verifyS1Max" class="verify-soll">—</span>
+      </div>
+      <div class="verify-row"><span class="muted">Smooth d:</span> <input type="number" id="verifyWindow" min="1" max="200" value="15" style="width:3em;" title="Window (frames) for d(1↔max), dev, and sparkline – moving average"> Frames</div>
+      <div class="verify-row verify-sparkline-wrap">
+        <span class="muted">Deviation (%):</span>
+        <div class="verify-spark-inline">
+          <canvas id="verifySparkline" class="verify-sparkline" width="220" height="70" title="Deviation from target over time"></canvas>
+          <span id="verifyDevMean" class="verify-mean" title="Smoothed mean (~2.5 s)">—</span>
+        </div>
+      </div>
+      <div class="verify-row verify-manual">
+        <span class="muted">Manual target (mm):</span>
+        <input type="number" id="verifySoll" min="0" step="1" placeholder="—" style="width:4em;">
+        <span class="muted">for d(1↔max)</span>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="stored-section">
+    <h3>Stored Calibration</h3>
+    <table class="stored-table">
+      <thead>
+        <tr><th>fx</th><th>fy</th><th>cx</th><th>cy</th><th>Resolution</th><th></th></tr>
+      </thead>
+      <tbody id="storedTableBody">
+        <tr><td colspan="6" class="empty">— none stored —</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script src="kiss3d-pose.js"></script>
+  <script src="kiss3d-state.js"></script>
+  <script>
+    (function () {
+      var fallback = { rulers: [{ name: "50mm S", ids: [150, 151, 152], axis: "xyz", distMm: 15 }, { name: "100mm S", ids: [160, 161, 162, 163, 164, 165], axis: "xyz", distMm: 15 }, { name: "200mm S", ids: [180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192], axis: "xyz", distMm: 15 }, { name: "150mm M", ids: [250, 251, 252, 253, 254], axis: "xyz", distMm: 30 }, { name: "200mm M", ids: [260, 261, 262, 263, 264, 265], axis: "xyz", distMm: 30 }] };
+      window.__rulerLut = fallback;
+      var p = (location && location.protocol) || '';
+      if (p === 'http:' || p === 'https:') {
+        fetch('ruler-lut.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { if (d && d.rulers) window.__rulerLut = d; }).catch(function () {});
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      var video = document.getElementById('video');
+      var overlay = document.getElementById('overlay');
+      var canvas = document.getElementById('canvas');
+      var btnStart = document.getElementById('btnStart');
+      var btnStop = document.getElementById('btnStop');
+      var btnCollect = document.getElementById('btnCollect');
+      var btnCalib = document.getElementById('btnCalib');
+      var btnSave = document.getElementById('btnSave');
+      var statusEl = document.getElementById('status');
+      var resultEl = document.getElementById('result');
+      var outFx = document.getElementById('outFx');
+      var outFy = document.getElementById('outFy');
+      var outCx = document.getElementById('outCx');
+      var outCy = document.getElementById('outCy');
+      var outScale = document.getElementById('outScale');
+      var outErr = document.getElementById('outErr');
+      var storedTableBody = document.getElementById('storedTableBody');
+      var stabilWindowInput = document.getElementById('stabilWindow');
+      var minZDeltaInput = document.getElementById('minZDelta');
+      var minSamplesInput = document.getElementById('minSamples');
+      var sampleLogEl = document.getElementById('sampleLog');
+      var sampleLogList = document.getElementById('sampleLogList');
+      var sampleTimelineEl = document.getElementById('sampleTimeline');
+      var verifySection = document.getElementById('verifySection');
+      var verifyMarkerIds = document.getElementById('verifyMarkerIds');
+      var verifyD1Max = document.getElementById('verifyD1Max');
+      var verifyS1Max = document.getElementById('verifyS1Max');
+      var verifySollInput = document.getElementById('verifySoll');
+      var verifyWindowInput = document.getElementById('verifyWindow');
+      var verifySparklineEl = document.getElementById('verifySparkline');
+      var verifyDevMeanEl = document.getElementById('verifyDevMean');
+      var verifyRawBuffer = [];
+      var liveZBuffer = [];
+      var liveZSmooth = null;
+      var lastTickTime = null;
+      var lastProcessTime = null;
+      var fpsSmoothed = null;
+      var FPS_SMOOTH_ALPHA = 0.15;
+      var verifySmoothDist = null;
+      var verifyDeviationHistory = [];
+      var VERIFY_HISTORY_MAX = 120;
+      var VERIFY_MEAN_WINDOW = 75;
+
+      var stream = null;
+      var collectingFrames = false;
+      var collectBuffer = [];
+      var collectTarget = 0;
+      var lastMarkers = null;
+      var lastW = 0;
+      var lastH = 0;
+      var ringBuffer = [];
+      var RING_MAX = 60;
+      var lastSavedZ = null;
+      var autoCalibDone = false;
+
+      function refreshStoredTable() {
+        if (!storedTableBody) return;
+        var byRes = getStoredCalibrations();
+        var keys = Object.keys(byRes);
+        if (keys.length === 0) {
+          storedTableBody.innerHTML = '<tr><td colspan="6" class="empty">— none stored —</td></tr>';
+          return;
+        }
+        var html = '';
+        for (var ki = 0; ki < keys.length; ki++) {
+          var resKey = keys[ki];
+          var d = byRes[resKey];
+          if (!d || d.fx == null) continue;
+          var res = resKey.replace('x', '×');
+          html += '<tr><td>' + Number(d.fx).toFixed(2) + '</td><td>' + Number(d.fy).toFixed(2) + '</td><td>' + Number(d.cx).toFixed(2) + '</td><td>' + Number(d.cy).toFixed(2) + '</td><td>' + res + '</td><td><button type="button" class="btnClearRes" data-res="' + resKey + '" title="Delete this resolution">Delete</button></td></tr>';
+        }
+        if (html) {
+          storedTableBody.innerHTML = html;
+          storedTableBody.querySelectorAll('.btnClearRes').forEach(function (btn) {
+            btn.addEventListener('click', function () { clearStoredRes(btn.getAttribute('data-res')); });
+          });
+        } else {
+          storedTableBody.innerHTML = '<tr><td colspan="6" class="empty">— none stored —</td></tr>';
+        }
+      }
+      function clearStoredRes(resKey) {
+        try {
+          var byRes = getStoredCalibrations();
+          delete byRes[resKey];
+          if (Object.keys(byRes).length === 0) {
+            localStorage.removeItem('kiss3d_calibrated_K');
+          } else {
+            localStorage.setItem('kiss3d_calibrated_K', JSON.stringify({ byRes: byRes }));
+          }
+          refreshStoredTable();
+          setStatus('Stored calibration for ' + resKey.replace('x', '×') + ' deleted.');
+        } catch (e) { setStatus('Delete failed.'); }
+      }
+      refreshStoredTable();
+      var detector = null;
+      var aprilTagReady = null;
+      var samples = [];
+      var calibResult = null;
+      var animationId = null;
+
+      function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+      function imgToGray(imageData, buf) {
+        var d = imageData.data;
+        for (var i = 0, j = 0; i < d.length; i += 4, j++) buf[j] = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      }
+
+      function getExpectedDistFromRuler(id1, id2, rulerLut) {
+        if (!rulerLut || !rulerLut.rulers) return null;
+        var a = Number(id1), b = Number(id2);
+        if (a > b) { var t = a; a = b; b = t; }
+        for (var r = 0; r < rulerLut.rulers.length; r++) {
+          var rule = rulerLut.rulers[r];
+          if (!rule.ids || !(rule.distMm > 0)) continue;
+          var i = rule.ids.indexOf(a), j = rule.ids.indexOf(b);
+          if (i >= 0 && j >= 0 && i < j) return (j - i) * rule.distMm;
+        }
+        return null;
+      }
+
+      function getStoredCalibrations() {
+        try {
+          var stored = localStorage.getItem('kiss3d_calibrated_K');
+          if (!stored) return {};
+          var c = JSON.parse(stored);
+          if (c && c.byRes) return c.byRes;
+          if (c && c.fx != null && c.w > 0 && c.h > 0) {
+            var k = c.w + 'x' + c.h;
+            var o = {}; o[k] = { fx: c.fx, fy: c.fy, cx: c.cx, cy: c.cy };
+            return o;
+          }
+        } catch (e) {}
+        return {};
+      }
+      function getCalibratedK(w, h) {
+        try {
+          var byRes = getStoredCalibrations();
+          var key = w + 'x' + h;
+          if (byRes[key]) return byRes[key];
+        } catch (e) {}
+        return (window.KISS3DPose && KISS3DPose.defaultCamera) ? KISS3DPose.defaultCamera(w, h) : null;
+      }
+
+      function getRulerPairs(markerPoses, rulerLut) {
+        var pairs = [];
+        if (!markerPoses || !rulerLut || !rulerLut.rulers) return pairs;
+        for (var r = 0; r < rulerLut.rulers.length; r++) {
+          var rule = rulerLut.rulers[r];
+          if (!rule.ids || rule.ids.length < 2 || !(rule.distMm > 0)) continue;
+          for (var i = 0; i < rule.ids.length - 1; i++) {
+            var id1 = String(rule.ids[i]), id2 = String(rule.ids[i + 1]);
+            if (!markerPoses[id1] || !markerPoses[id1].t || !markerPoses[id2] || !markerPoses[id2].t) continue;
+            var p1 = markerPoses[id1].t, p2 = markerPoses[id2].t;
+            var dx = p2[0] - p1[0], dy = p2[1] - p1[1], dz = p2[2] - p1[2];
+            var dist = (rule.axis === 'xyz') ? Math.sqrt(dx * dx + dy * dy + dz * dz) : (rule.axis === 'x') ? Math.abs(dx) : Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0.1) pairs.push({ distMm: rule.distMm, measured: dist });
+          }
+        }
+        return pairs;
+      }
+
+      function buildMarkerPoses(markers, K, poseFromCorners, getTagSizeMm) {
+        var markerPoses = {};
+        for (var i = 0; i < markers.length; i++) {
+          var m = markers[i];
+          var tagMm = (getTagSizeMm && getTagSizeMm(m.id)) || 12;
+          if (tagMm == null) tagMm = 12;
+          var pose = poseFromCorners(m.corners, tagMm, K);
+          if (pose && pose.t) markerPoses[String(m.id)] = { t: pose.t };
+        }
+        return markerPoses;
+      }
+
+      function errorForK(K, sample, rulerLut, poseFromCorners, getTagSizeMm) {
+        var frames = sample.frames || [sample];
+        var totalErr = 0, totalPairs = 0;
+        for (var f = 0; f < frames.length; f++) {
+          var fr = frames[f];
+          var markers = fr.markers || fr;
+          if (!Array.isArray(markers)) continue;
+          var markerPoses = buildMarkerPoses(markers, K, poseFromCorners, getTagSizeMm);
+          var pairs = getRulerPairs(markerPoses, rulerLut);
+          for (var j = 0; j < pairs.length; j++) {
+            totalErr += Math.pow(pairs[j].measured - pairs[j].distMm, 2);
+            totalPairs++;
+          }
+        }
+        return totalPairs > 0 ? totalErr / totalPairs : 1e9;
+      }
+
+      function sampleFeedback(sample, K, poseFromCorners, getTagSizeMm, rulerLut) {
+        var frames = sample.frames || [];
+        if (frames.length === 0) return { zMean: null, zFirstLastMean: null, pairCount: 0 };
+        var zSum = 0, zCnt = 0, pairCount = 0;
+        var firstLastSum = 0, firstLastCnt = 0;
+        for (var f = 0; f < frames.length; f++) {
+          var markerPoses = buildMarkerPoses(frames[f].markers, K, poseFromCorners, getTagSizeMm);
+          var ids = Object.keys(markerPoses).sort(function (a, b) { return Number(a) - Number(b); });
+          if (ids.length >= 2) {
+            var zFirst = markerPoses[ids[0]].t[2], zLast = markerPoses[ids[ids.length - 1]].t[2];
+            firstLastSum += (zFirst + zLast) / 2;
+            firstLastCnt++;
+          }
+          for (var id in markerPoses) { zSum += markerPoses[id].t[2]; zCnt++; }
+          pairCount += getRulerPairs(markerPoses, rulerLut).length;
+        }
+        return {
+          zMean: zCnt > 0 ? zSum / zCnt : null,
+          zFirstLastMean: firstLastCnt > 0 ? firstLastSum / firstLastCnt : null,
+          pairCount: pairCount
+        };
+      }
+
+      function std(arr) {
+        if (!arr || arr.length < 2) return 0;
+        var sum = 0, i;
+        for (i = 0; i < arr.length; i++) sum += arr[i];
+        var mean = sum / arr.length;
+        var sq = 0;
+        for (i = 0; i < arr.length; i++) sq += (arr[i] - mean) * (arr[i] - mean);
+        return Math.sqrt(sq / (arr.length - 1));
+      }
+
+      function runCalibration() {
+        if (samples.length < 3) return null;
+        var rulerLut = window.__rulerLut;
+        var poseFromCorners = window.KISS3DPose && window.KISS3DPose.poseFromCorners;
+        var getTag = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+        var bestErr = 1e9, bestS = 1;
+        for (var s = 0.7; s <= 1.3; s += 0.01) {
+          var totalErr = 0, count = 0;
+          for (var i = 0; i < samples.length; i++) {
+            var sm = samples[i];
+            var K0 = window.KISS3DPose.defaultCamera(sm.w, sm.h);
+            var K = { fx: K0.fx * s, fy: K0.fy * s, cx: K0.cx, cy: K0.cy };
+            totalErr += errorForK(K, sm, rulerLut, poseFromCorners, getTag);
+            count++;
+          }
+          var avg = count > 0 ? totalErr / count : 1e9;
+          if (avg < bestErr) { bestErr = avg; bestS = s; }
+        }
+        var first = samples[0];
+        var K0 = window.KISS3DPose.defaultCamera(first.w, first.h);
+        return { fx: K0.fx * bestS, fy: K0.fy * bestS, cx: K0.cx, cy: K0.cy, w: first.w, h: first.h, scale: bestS, error: bestErr };
+      }
+
+      function setAprilTagReady() {
+        if (aprilTagReady) return aprilTagReady;
+        var res;
+        aprilTagReady = new Promise(function (r) { res = r; });
+        window.AprilTagWasmModule = { locateFile: function (p) { return 'https://arenaxr.github.io/apriltag-js-standalone/' + p; } };
+        var s = document.createElement('script');
+        s.src = 'https://arenaxr.github.io/apriltag-js-standalone/apriltag_wasm.js';
+        s.onload = function () {
+          var getP = function () {
+            var w = window.AprilTagWasm;
+            if (typeof w === 'function') return w(window.AprilTagWasmModule);
+            if (w && typeof w.then === 'function') return w;
+            return null;
+          };
+          var p = getP();
+          if (!p) {
+            setTimeout(function () {
+              var q = getP();
+              if (q) q.then(onMod).catch(function () { res(null); }); else res(null);
+            }, 100);
+            return;
+          }
+          p.then(onMod).catch(function () { res(null); });
+          function onMod(M) {
+            try {
+              var _init = M.cwrap('atagjs_init', 'number', []);
+              var _set = M.cwrap('atagjs_set_detector_options', 'number', ['number', 'number', 'number', 'number', 'number', 'number', 'number']);
+              var _img = M.cwrap('atagjs_set_img_buffer', 'number', ['number', 'number', 'number']);
+              var _det = M.cwrap('atagjs_detect', 'number', []);
+              _init();
+              _set(2.0, 0, 1, 1, 0, 0, 0);
+              detector = {
+                detect: function (gray, w, h) {
+                  var buf = _img(w, h, w);
+                  M.HEAPU8.set(gray, buf);
+                  var ptr = _det();
+                  var len = M.getValue(ptr, 'i32');
+                  if (len === 0) return [];
+                  var strPtr = M.getValue(ptr + 4, 'i32');
+                  var v = new Uint8Array(M.HEAP8.buffer, strPtr, len);
+                  var str = '';
+                  for (var i = 0; i < len; i++) str += String.fromCharCode(v[i]);
+                  return JSON.parse(str);
+                }
+              };
+              res(detector);
+            } catch (e) { res(null); }
+          }
+        };
+        s.onerror = function () { res(null); };
+        document.head.appendChild(s);
+        return aprilTagReady;
+      }
+
+      function drawSampleTimeline(liveZSmoothVal, Kv, w, h) {
+        if (!sampleTimelineEl) return;
+        var liveZEl = document.getElementById('liveZDisplay');
+        if (liveZEl) liveZEl.textContent = liveZSmoothVal != null ? Math.round(liveZSmoothVal) + ' mm' : '—';
+        var ctx = sampleTimelineEl.getContext('2d');
+        var tw = sampleTimelineEl.width, th = sampleTimelineEl.height;
+        var padL = 28, padR = 8;
+        var plotW = tw - padL - padR;
+        var y = th / 2;
+        ctx.clearRect(0, 0, tw, th);
+        ctx.strokeStyle = 'rgba(136, 136, 136, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(tw - padR, y);
+        ctx.stroke();
+        ctx.fillStyle = '#888';
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillText('0', 4, y + 4);
+        ctx.fillText('600', tw - 24, y + 4);
+        if (liveZSmoothVal != null) {
+          var zClamp = Math.max(0, Math.min(600, liveZSmoothVal));
+          var x = padL + (zClamp / 600) * plotW;
+          ctx.fillStyle = 'rgba(224, 112, 64, 1)';
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(0, 212, 170, 0.9)';
+        var poseFromCorners = window.KISS3DPose && window.KISS3DPose.poseFromCorners;
+        var getTag = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+        for (var i = 0; i < samples.length; i++) {
+          var sm = samples[i];
+          var Kdisp = Kv || (window.KISS3DPose && window.KISS3DPose.defaultCamera ? window.KISS3DPose.defaultCamera(sm.w, sm.h) : null);
+          var fb = sampleFeedback(sm, Kdisp, poseFromCorners, getTag, window.__rulerLut);
+          var z = fb.zFirstLastMean != null ? fb.zFirstLastMean : fb.zMean;
+          if (z == null) z = 0;
+          z = Math.max(0, Math.min(600, z));
+          var x = padL + (z / 600) * plotW;
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function pushSample(frames, w, h) {
+        var K0 = window.KISS3DPose && window.KISS3DPose.defaultCamera ? KISS3DPose.defaultCamera(w, h) : null;
+        var poseFromCorners = window.KISS3DPose && window.KISS3DPose.poseFromCorners;
+        var getTag = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+        var rulerLut = window.__rulerLut;
+        var fb = sampleFeedback({ frames: frames }, K0, poseFromCorners, getTag, rulerLut);
+        if (fb.pairCount === 0) return false;
+        samples.push({ frames: frames, w: w, h: h, zMean: fb.zMean, zFirstLastMean: fb.zFirstLastMean });
+        var n = samples.length;
+        var zStr = (fb.zFirstLastMean != null ? fb.zFirstLastMean : fb.zMean) != null ? 'z ~' + Math.round(fb.zFirstLastMean != null ? fb.zFirstLastMean : fb.zMean) + 'mm' : '—';
+        lastSavedZ = fb.zFirstLastMean != null ? fb.zFirstLastMean : fb.zMean;
+        var logItem = document.createElement('li');
+        logItem.textContent = 'Sample ' + n + ': ' + zStr + ', ' + frames.length + ' frames, ' + fb.pairCount + ' pairs';
+        if (sampleLogList) sampleLogList.appendChild(logItem);
+        if (sampleLogEl) sampleLogEl.style.display = 'block';
+        setStatus('Auto-saved. Sample ' + n + ': ' + zStr + ', ' + fb.pairCount + ' pairs.');
+        var minSamp = (minSamplesInput && parseInt(minSamplesInput.value, 10)) || 3;
+        btnCalib.disabled = samples.length < minSamp;
+        drawSampleTimeline(liveZSmooth, getCalibratedK(w, h), w, h);
+        return true;
+      }
+
+      function finishCollect() {
+        if (collectBuffer.length < 2) {
+          setStatus('Not enough frames with markers (min. 2).');
+          collectingFrames = false;
+          btnCollect.disabled = false;
+          return;
+        }
+        var w = lastW, h = lastH;
+        var poseFromCorners = window.KISS3DPose && window.KISS3DPose.poseFromCorners;
+        var getTag = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+        var rulerLut = window.__rulerLut;
+        var K0 = window.KISS3DPose && KISS3DPose.defaultCamera ? KISS3DPose.defaultCamera(w, h) : null;
+        var fb = sampleFeedback({ frames: collectBuffer }, K0, poseFromCorners, getTag, rulerLut);
+        if (fb.pairCount === 0) {
+          setStatus('No ruler pair in frames. Check ruler-lut.');
+          collectingFrames = false;
+          btnCollect.disabled = false;
+          return;
+        }
+        if (!pushSample(collectBuffer.slice(), w, h)) setStatus('No ruler pair.');
+        else {
+          var zVal = fb.zFirstLastMean != null ? fb.zFirstLastMean : fb.zMean;
+          setStatus('Saved. Sample ' + samples.length + ': z ~' + (zVal != null ? Math.round(zVal) + 'mm' : '—') + ', ' + fb.pairCount + ' pairs.');
+          drawSampleTimeline(liveZSmooth, getCalibratedK(w, h), w, h);
+        }
+        collectBuffer = [];
+        collectingFrames = false;
+        btnCollect.disabled = false;
+      }
+
+      function doAutoCalib() {
+        calibResult = runCalibration();
+        if (!calibResult) return;
+        resultEl.style.display = 'block';
+        outFx.textContent = calibResult.fx.toFixed(2);
+        outFy.textContent = calibResult.fy.toFixed(2);
+        outCx.textContent = calibResult.cx.toFixed(2);
+        outCy.textContent = calibResult.cy.toFixed(2);
+        outScale.textContent = calibResult.scale.toFixed(3);
+        outErr.textContent = calibResult.error.toFixed(2);
+        btnSave.disabled = false;
+        autoCalibDone = true;
+        setStatus('Confidence reached. Calibration done. Factor ' + calibResult.scale.toFixed(2) + '. Save?');
+      }
+
+      var Z_STD_THRESH = 18;
+      function tick() {
+        animationId = requestAnimationFrame(tick);
+        var now = performance.now();
+        lastTickTime = now;
+        if (!stream || !detector || video.readyState < 2) return;
+        if (lastProcessTime != null) {
+          var dt = now - lastProcessTime;
+          if (dt > 0) {
+            var fps = 1000 / dt;
+            fpsSmoothed = (fpsSmoothed != null) ? FPS_SMOOTH_ALPHA * fps + (1 - FPS_SMOOTH_ALPHA) * fpsSmoothed : fps;
+          }
+        }
+        lastProcessTime = now;
+        var w = video.videoWidth, h = video.videoHeight;
+        if (w === 0 || h === 0) return;
+        var K = window.KISS3DPose && KISS3DPose.defaultCamera ? KISS3DPose.defaultCamera(w, h) : null;
+        canvas.width = w; canvas.height = h; overlay.width = w; overlay.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        var id = ctx.getImageData(0, 0, w, h);
+        var n = w * h;
+        if (!window._grayBuf || window._grayBuf.length !== n) window._grayBuf = new Uint8Array(n);
+        imgToGray(id, window._grayBuf);
+        var markers = detector.detect(window._grayBuf, w, h);
+        lastMarkers = markers;
+        lastW = w;
+        lastH = h;
+        var copy = markers && markers.length >= 2 ? markers.map(function (m) {
+          return { id: m.id, corners: (m.corners || []).map(function (c) { return { x: c.x, y: c.y }; }) };
+        }) : null;
+        if (copy) {
+          ringBuffer.push({ markers: copy, w: w, h: h });
+          while (ringBuffer.length > RING_MAX) ringBuffer.shift();
+        }
+        if (collectingFrames && copy) {
+          collectBuffer.push({ markers: copy });
+          setStatus('Collecting… ' + collectBuffer.length + '/' + collectTarget + ' frames');
+          if (collectBuffer.length >= collectTarget) finishCollect();
+        } else if (ringBuffer.length >= 15) {
+          var stabilWin = (stabilWindowInput && parseInt(stabilWindowInput.value, 10)) || 15;
+          var minZ = (minZDeltaInput && parseInt(minZDeltaInput.value, 10)) || 50;
+          var minSamp = (minSamplesInput && parseInt(minSamplesInput.value, 10)) || 3;
+          var tail = ringBuffer.slice(-stabilWin);
+          var K0 = window.KISS3DPose && KISS3DPose.defaultCamera ? KISS3DPose.defaultCamera(w, h) : null;
+          var poseFromCorners = window.KISS3DPose && KISS3DPose.poseFromCorners;
+          var getTag = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+          var zArr = [];
+          var firstLastSum = 0, firstLastCnt = 0;
+          var hasPairs = false;
+          for (var fi = 0; fi < tail.length; fi++) {
+            var mp = buildMarkerPoses(tail[fi].markers, K0, poseFromCorners, getTag);
+            var pairs = getRulerPairs(mp, window.__rulerLut);
+            if (pairs.length > 0) hasPairs = true;
+            var ids = Object.keys(mp).sort(function (a, b) { return Number(a) - Number(b); });
+            if (ids.length >= 2) {
+              firstLastSum += (mp[ids[0]].t[2] + mp[ids[ids.length - 1]].t[2]) / 2;
+              firstLastCnt++;
+            }
+            for (var idk in mp) zArr.push(mp[idk].t[2]);
+          }
+          var zStdVal = std(zArr);
+          var zMeanVal = zArr.length > 0 ? zArr.reduce(function (a, b) { return a + b; }, 0) / zArr.length : null;
+          var zFirstLastVal = firstLastCnt > 0 ? firstLastSum / firstLastCnt : null;
+          var farEnough = lastSavedZ == null || (zFirstLastVal != null && Math.abs(zFirstLastVal - lastSavedZ) >= minZ);
+          if (hasPairs && zStdVal < Z_STD_THRESH && farEnough && tail.length >= stabilWin) {
+            var tailCopy = tail.map(function (f) { return { markers: f.markers.map(function (m) { return { id: m.id, corners: m.corners.map(function (c) { return { x: c.x, y: c.y }; }) }; }) }; });
+            if (pushSample(tailCopy, w, h) && samples.length >= minSamp && !autoCalibDone) doAutoCalib();
+          } else if (samples.length > 0 && samples.length < minSamp && hasPairs && zFirstLastVal != null && !farEnough) {
+            setStatus(samples.length + '/' + minSamp + ' samples. Move ruler closer/farther (Δz>' + minZ + 'mm).');
+          }
+        }
+        if (verifySection && markers && markers.length >= 2) {
+          verifySection.style.display = 'block';
+          if (sampleLogEl) sampleLogEl.style.display = 'block';
+          var Kv = getCalibratedK(w, h);
+          var poseFromCorners = window.KISS3DPose && window.KISS3DPose.poseFromCorners;
+          var getTag = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+          var mp = {};
+          for (var vi = 0; vi < markers.length; vi++) {
+            var mv = markers[vi];
+            var tagMm = (getTag(mv.id) == null) ? 12 : getTag(mv.id);
+            var pose = poseFromCorners(mv.corners, tagMm, Kv);
+            if (pose && pose.t) mp[String(mv.id)] = { t: pose.t };
+          }
+          var ids = Object.keys(mp).sort(function (a, b) { return Number(a) - Number(b); });
+          var rawDist = null;
+          var liveZRaw = null;
+          if (ids.length >= 2) {
+            var pa = mp[ids[0]].t, pb = mp[ids[ids.length - 1]].t;
+            rawDist = Math.sqrt(Math.pow(pb[0] - pa[0], 2) + Math.pow(pb[1] - pa[1], 2) + Math.pow(pb[2] - pa[2], 2));
+            liveZRaw = (pa[2] + pb[2]) / 2;
+          }
+          if (liveZRaw != null) {
+            liveZBuffer.push(liveZRaw);
+            while (liveZBuffer.length > VERIFY_HISTORY_MAX) liveZBuffer.shift();
+            var winSizeZ = (verifyWindowInput && parseInt(verifyWindowInput.value, 10)) || 15;
+            var takeZ = Math.min(winSizeZ, liveZBuffer.length);
+            var sumZ = 0;
+            for (var zi = liveZBuffer.length - takeZ; zi < liveZBuffer.length; zi++) sumZ += liveZBuffer[zi];
+            liveZSmooth = sumZ / takeZ;
+          } else {
+            liveZSmooth = null;
+          }
+          if (verifyMarkerIds) verifyMarkerIds.textContent = ids.join(', ') || '—';
+          var verifyResEl = document.getElementById('verifyRes');
+          if (verifyResEl) {
+            var byRes = getStoredCalibrations();
+            var hasStored = !!(byRes[w + 'x' + h]);
+            verifyResEl.textContent = w + '×' + h + (hasStored ? ' [K calibrated]' : '');
+          }
+          var rulerLut = window.__rulerLut;
+          var idFirst = ids.length >= 2 ? ids[0] : null;
+          var idLast = ids.length >= 2 ? ids[ids.length - 1] : null;
+          var sollLut = (idFirst != null && idLast != null && rulerLut) ? getExpectedDistFromRuler(idFirst, idLast, rulerLut) : null;
+          var sollManu = verifySollInput ? parseFloat(verifySollInput.value) : NaN;
+          var soll = (sollLut != null) ? sollLut : (sollManu > 0 ? sollManu : null);
+          var winSize = (verifyWindowInput && parseInt(verifyWindowInput.value, 10) > 0) ? parseInt(verifyWindowInput.value, 10) : 15;
+          if (rawDist != null) {
+            verifyRawBuffer.push(rawDist);
+            while (verifyRawBuffer.length > VERIFY_HISTORY_MAX) verifyRawBuffer.shift();
+            var take = Math.min(winSize, verifyRawBuffer.length);
+            var sum = 0;
+            for (var bi = verifyRawBuffer.length - take; bi < verifyRawBuffer.length; bi++) sum += verifyRawBuffer[bi];
+            verifySmoothDist = sum / take;
+            if (soll != null && soll > 0) {
+              verifyDeviationHistory.push((rawDist - soll) / soll * 100);
+              while (verifyDeviationHistory.length > VERIFY_HISTORY_MAX) verifyDeviationHistory.shift();
+            }
+          } else {
+            verifySmoothDist = null;
+          }
+          var measured = verifySmoothDist;
+          if (verifyD1Max) verifyD1Max.textContent = measured != null ? Math.round(measured) + ' mm' : '—';
+          if (verifyS1Max) {
+            verifyS1Max.textContent = '';
+            verifyS1Max.className = 'verify-soll';
+            verifyS1Max.style.color = '';
+            if (soll != null && measured != null && measured > 0) {
+              var abw = ((measured - soll) / soll * 100);
+              verifyS1Max.textContent = '(target ' + Math.round(soll) + (sollLut != null ? ' LUT' : '') + ') dev ' + abw.toFixed(1) + '%';
+              verifyS1Max.className = 'verify-soll has-soll' + (Math.abs(abw) > 5 ? ' has-abw' : '');
+              verifyS1Max.style.color = Math.abs(abw) > 5 ? 'var(--error)' : '';
+            } else if (sollLut != null) {
+              verifyS1Max.textContent = '(target ' + sollLut + ' from LUT)';
+              verifyS1Max.className = 'verify-soll has-soll';
+            }
+          }
+          if (verifyDevMeanEl) {
+            if (verifyDeviationHistory.length >= 2) {
+              var take = Math.min(VERIFY_MEAN_WINDOW, verifyDeviationHistory.length);
+              var sum = 0;
+              for (var mi = verifyDeviationHistory.length - take; mi < verifyDeviationHistory.length; mi++) sum += verifyDeviationHistory[mi];
+              var mean = sum / take;
+              verifyDevMeanEl.textContent = 'M: ' + (mean >= 0 ? '+' : '') + mean.toFixed(1) + '%';
+            } else {
+              verifyDevMeanEl.textContent = '—';
+            }
+          }
+          if (verifySparklineEl) {
+            var ctx = verifySparklineEl.getContext('2d');
+            var sw = verifySparklineEl.width, sh = verifySparklineEl.height;
+            var padL = 36, padR = 8, padT = 8, padB = 20;
+            var plotW = sw - padL - padR, plotH = sh - padT - padB;
+            ctx.clearRect(0, 0, sw, sh);
+            if (verifyDeviationHistory.length >= 2) {
+              var arr = verifyDeviationHistory;
+              var spWin = Math.min(winSize, arr.length);
+              var smoothed = [];
+              for (var si = 0; si < arr.length; si++) {
+                var start = Math.max(0, si - spWin + 1);
+                var ssum = 0;
+                for (var sj = start; sj <= si; sj++) ssum += arr[sj];
+                smoothed.push(ssum / (si - start + 1));
+              }
+              var startIdx = Math.max(0, spWin - 1);
+              if (startIdx >= smoothed.length - 1) startIdx = 0;
+              smoothed = smoothed.slice(startIdx);
+              var minV = Math.min.apply(null, smoothed), maxV = Math.max.apply(null, smoothed);
+              var absMax = Math.max(Math.abs(minV), Math.abs(maxV), 0.01);
+              var range = 2 * absMax;
+              var toY = function (v) { return padT + plotH - ((v + absMax) / range) * plotH; };
+              ctx.strokeStyle = 'rgba(136, 136, 136, 0.6)';
+              ctx.lineWidth = 1;
+              var y0 = toY(0);
+              ctx.beginPath();
+              ctx.moveTo(padL, y0);
+              ctx.lineTo(sw - padR, y0);
+              ctx.stroke();
+              ctx.fillStyle = '#888';
+              ctx.font = '10px "JetBrains Mono", monospace';
+              ctx.fillText('0', 4, y0 + 4);
+              ctx.fillText('+' + absMax.toFixed(1) + '%', 4, padT + 10);
+              ctx.fillText('-' + absMax.toFixed(1) + '%', 4, sh - padB + 4);
+              ctx.strokeStyle = 'rgba(0, 212, 170, 0.9)';
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              var plotLen = smoothed.length;
+              for (var i = 0; i < plotLen; i++) {
+                var x = plotLen > 1 ? padL + (i / (plotLen - 1)) * plotW : padL + plotW / 2;
+                var y = toY(smoothed[i]);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+              }
+              ctx.stroke();
+            }
+          }
+          drawSampleTimeline(liveZSmooth, Kv, w, h);
+        }
+        var ctxO = overlay.getContext('2d');
+        ctxO.clearRect(0, 0, w, h);
+        if (markers && markers.length > 0) {
+          ctxO.strokeStyle = collectingFrames ? '#ffaa00' : (autoCalibDone ? '#00d4aa' : '#00d4aa');
+          ctxO.lineWidth = 2;
+          for (var i = 0; i < markers.length; i++) {
+            var c = markers[i].corners;
+            if (!c || c.length < 4) continue;
+            ctxO.beginPath();
+            ctxO.moveTo(c[0].x, c[0].y);
+            for (var j = 1; j < c.length; j++) ctxO.lineTo(c[j].x, c[j].y);
+            ctxO.closePath();
+            ctxO.stroke();
+          }
+        }
+        if (fpsSmoothed != null) {
+          ctxO.fillStyle = 'rgba(0,0,0,0.6)';
+          ctxO.fillRect(w - 52, 4, 48, 22);
+          ctxO.fillStyle = '#00d4aa';
+          ctxO.font = 'bold 14px "JetBrains Mono", monospace';
+          ctxO.fillText(Math.round(fpsSmoothed) + ' FPS', w - 48, 20);
+        }
+      }
+
+      btnStart.addEventListener('click', function () {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setStatus('Camera API not available (HTTPS/localhost).');
+          return;
+        }
+        setStatus('Loading AprilTag…');
+        setAprilTagReady().then(function (d) {
+          if (!d) { setStatus('AprilTag failed.'); return; }
+          var resSel = document.getElementById('resolutionSelect');
+          var res = resSel ? resSel.value : '640';
+          var width = 640, height = 480;
+          if (res === '720') { width = 1280; height = 720; } else if (res === '1080') { width = 1920; height = 1080; }
+          navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: width }, height: { ideal: height } },
+            audio: false
+          }).then(function (s) {
+            stream = s;
+            video.srcObject = s;
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+            btnCollect.disabled = false;
+            setStatus('Move ruler slowly. Auto-save on stability.');
+          }).catch(function () { setStatus('Camera access failed.'); });
+        });
+      });
+
+      btnStop.addEventListener('click', function () {
+        if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+        if (animationId) cancelAnimationFrame(animationId);
+        video.srcObject = null;
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        btnCollect.disabled = true;
+        var minSamp = (minSamplesInput && parseInt(minSamplesInput.value, 10)) || 3;
+        btnCalib.disabled = samples.length < minSamp;
+        ringBuffer = [];
+        verifyRawBuffer = [];
+        verifyDeviationHistory = [];
+        verifySmoothDist = null;
+        liveZBuffer = [];
+        liveZSmooth = null;
+        var liveZEl = document.getElementById('liveZDisplay');
+        if (liveZEl) liveZEl.textContent = '—';
+        if (verifyDevMeanEl) verifyDevMeanEl.textContent = '—';
+        lastTickTime = null;
+        lastProcessTime = null;
+        fpsSmoothed = null;
+        if (collectingFrames) { collectingFrames = false; collectBuffer = []; btnCollect.disabled = false; }
+        setStatus('Stopped.');
+      });
+
+      btnCollect.addEventListener('click', function () {
+        if (!detector || !video.readyState || video.readyState < 2 || video.videoWidth === 0 || collectingFrames) return;
+        var win = (stabilWindowInput && parseInt(stabilWindowInput.value, 10)) || 15;
+        collectTarget = Math.max(3, Math.min(60, win));
+        collectBuffer = [];
+        collectingFrames = true;
+        btnCollect.disabled = true;
+        setStatus('Collecting… 0/' + collectTarget + ' frames. Hold ruler steady.');
+      });
+
+      btnCalib.addEventListener('click', function () {
+        var minSamp = (minSamplesInput && parseInt(minSamplesInput.value, 10)) || 3;
+        if (samples.length < minSamp) { setStatus('At least ' + minSamp + ' samples required.'); return; }
+        setStatus('Calibration running…');
+        doAutoCalib();
+      });
+
+      requestAnimationFrame(tick);
+
+      btnSave.addEventListener('click', function () {
+        if (!calibResult) return;
+        try {
+          var byRes = getStoredCalibrations();
+          var key = calibResult.w + 'x' + calibResult.h;
+          byRes[key] = { fx: calibResult.fx, fy: calibResult.fy, cx: calibResult.cx, cy: calibResult.cy };
+          localStorage.setItem('kiss3d_calibrated_K', JSON.stringify({ byRes: byRes }));
+          refreshStoredTable();
+          setStatus('Saved for ' + calibResult.w + '×' + calibResult.h + '. Debug-Pose uses K when resolution matches.');
+        } catch (e) { setStatus('localStorage failed: ' + (e.message || e)); }
+      });
+    })();
+  </script>
+
+  <footer class="meta">
+    <p class="footer-by"><a href="https://mess.engineering" target="_blank" rel="noopener" title="Mattern Engineering &amp; Software Solutions">M.E.S.S.</a></p>
+  </footer>
+</body>
+</html>

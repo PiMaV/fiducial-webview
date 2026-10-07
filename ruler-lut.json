@@ -1,0 +1,35 @@
+{
+  "comment": "Lineale: IDs in X-Richtung aufsteigend, distMm = Abstand zwischen benachbarten Markern",
+  "rulers": [
+    {
+      "name": "Lineal 50mm S (150-152)",
+      "ids": [150, 151, 152],
+      "axis": "xyz",
+      "distMm": 15
+    },
+    {
+      "name": "Lineal 100mm S (160-165)",
+      "ids": [160, 161, 162, 163, 164, 165],
+      "axis": "xyz",
+      "distMm": 15
+    },
+    {
+      "name": "Lineal 200mm S (180-192)",
+      "ids": [180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192],
+      "axis": "xyz",
+      "distMm": 15
+    },
+    {
+      "name": "Lineal 150mm M (250-254)",
+      "ids": [250, 251, 252, 253, 254],
+      "axis": "xyz",
+      "distMm": 30
+    },
+    {
+      "name": "Lineal 200mm M (260-265)",
+      "ids": [260, 261, 262, 263, 264, 265],
+      "axis": "xyz",
+      "distMm": 30
+    }
+  ]
+}

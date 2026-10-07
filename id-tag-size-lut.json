@@ -1,0 +1,10 @@
+{
+  "comment": "ID-Bereich -> Tag-Kante (mm). Quelle: ID_konventionen.md. 0-99 reserviert.",
+  "ranges": [
+    { "idMin": 100, "idMax": 199, "tagMm": 6 },
+    { "idMin": 200, "idMax": 299, "tagMm": 12 },
+    { "idMin": 300, "idMax": 399, "tagMm": 20 }
+  ],
+  "specialMin": 400,
+  "specialMax": 586
+}

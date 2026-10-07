@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>KISS-3D Tracker (AprilTag)</title>
+  <link rel="icon" href="https://mess.engineering/favicon/favicon.ico" type="image/x-icon">
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #1a1a20;
+      --border: #2a2a32;
+      --accent: #00d4aa;
+      --text: #e8e8ec;
+      --muted: #888;
+      --error: #e05555;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+    }
+    h1 { font-size: clamp(1.2rem, 4vw, 1.5rem); font-weight: 600; color: var(--accent); margin: 0 0 0.5rem 0; }
+    .sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
+    .nav-links { font-size: 1rem; margin-bottom: 1rem; }
+    .nav-links a { color: var(--accent); text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+    .nav-sep { color: var(--muted); margin: 0 0.4rem; }
+    .secure-warning {
+      background: var(--surface); border: 1px solid var(--error); border-radius: 8px;
+      padding: 1rem; margin-bottom: 1rem; max-width: 560px; font-size: 0.9rem;
+    }
+    .secure-warning strong { color: var(--error); }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; justify-content: center; }
+    button {
+      font-family: inherit; font-size: 0.9rem; padding: 0.6rem 1.2rem;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--text); cursor: pointer;
+    }
+    button:hover { background: #25252c; border-color: var(--accent); }
+    button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .live-and-3d {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      width: 100%;
+      max-width: 1280px;
+      margin-top: 1rem;
+    }
+    .viewport {
+      position: relative; flex: 1 1 320px; max-width: 640px;
+      border-radius: 12px; overflow: hidden; background: var(--surface);
+      border: 1px solid var(--border); aspect-ratio: 4/3;
+    }
+    #video { display: block; width: 100%; height: 100%; object-fit: contain; }
+    #overlay { position: absolute; inset: 0; pointer-events: none; width: 100%; height: 100%; object-fit: contain; }
+    #canvas { display: none; }
+    .view3d-wrap {
+      flex: 1 1 320px;
+      max-width: 640px;
+      min-width: 280px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      aspect-ratio: 1;
+    }
+    .view3d-wrap canvas { display: block; width: 100%; height: 100%; }
+    .view3d-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .perf-wrap { width: 100%; max-width: 640px; height: 56px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .perf-wrap canvas { display: block; width: 100%; height: 100%; }
+    .state-panel {
+      margin-top: 1rem; padding: 1rem; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px;
+      max-width: 640px; width: 100%; font-size: 0.9rem;
+    }
+    .state-panel h2 { font-size: 1rem; color: var(--accent); margin: 0 0 0.5rem 0; }
+    .state-line { margin-bottom: 0.5rem; }
+    .state-line .val { color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    .status { margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); text-align: center; }
+    .status.error { color: var(--error); }
+    .credits { margin: 2.5rem auto 0 auto; padding: 0.75rem 1rem; max-width: 30rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.75rem; line-height: 1.35; text-align: left; }
+    .credits h2 { font-size: 0.8rem; color: var(--accent); margin: 0 0 0.35rem 0; }
+    .credits ul { margin: 0 0 0.5rem 0; padding-left: 1rem; }
+    .credits li { margin-bottom: 0.15rem; }
+    .credits a { color: var(--accent); text-decoration: none; }
+    .credits a:hover { text-decoration: underline; }
+    .credits .refs { margin-top: 0.5rem; }
+    .footer-by { margin-top: 1rem; font-size: 1rem; color: var(--muted); text-align: center; }
+    .footer-by a { color: var(--accent); text-decoration: none; }
+    .footer-by a:hover { text-decoration: underline; }
+    footer.meta { width: 100%; display: flex; flex-direction: column; align-items: center; padding-bottom: 0.75rem; }
+    .source-link { display: inline-block; padding: 0.35rem 0.85rem; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.9rem; text-decoration: none; transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s; }
+    .source-link:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px rgba(0, 255, 200, 0.14); transform: translateY(-1px); }
+    .source-link:active { transform: translateY(0); }
+    .source-link-wrap { text-align: center; margin-top: 1.25rem; }
+  </style>
+</head>
+<body>
+  <h1>KISS-3D Tracker</h1>
+  <p class="sub">AprilTag 36h11 only. State + world model + live 3D (Ref = origin). K from <a href="calibrate.html">calibrate</a> when available.</p>
+  <nav class="nav-links">
+    <a href="index.html">Home</a>
+    <span class="nav-sep">·</span>
+    <a href="scanner.html">Scanner</a>
+    <span class="nav-sep">·</span>
+    <a href="generator.html">Generator</a>
+    <span class="nav-sep">·</span>
+    <a href="debug-pose.html">Debug T/R</a>
+  </nav>
+
+  <div id="secureWarning" class="secure-warning" style="display: none;">
+    <strong>Camera not available</strong><br>
+    Use HTTPS or <code>localhost</code> — not <code>file://</code>.
+  </div>
+
+  <div class="controls">
+    <button id="btnStart" class="primary">Start</button>
+    <button id="btnStop" disabled>Stop</button>
+    <button id="btnReset">Reset world</button>
+    <label title="Video resolution – applies after restart"><span class="muted">Resolution:</span>
+      <select id="resolutionSelect">
+        <option value="640">640×480</option>
+        <option value="720">1280×720</option>
+        <option value="1080">1920×1080</option>
+      </select>
+    </label>
+    <label title="Mirror image for detection"><input type="checkbox" id="mirrorForDetection"> Mirror</label>
+    <label title="Smoothing factor (small = calmer, large = more reactive)">Smoothing α: <input type="number" id="smoothAlpha" min="0.001" max="0.99" step="0.005" value="0.2" style="width:3.5em;"></label>
+    <label title="Smooth camera rotation (Slerp) so orange frame jitters less"><input type="checkbox" id="smoothCameraRotation" checked> Smooth camera rotation</label>
+    <label title="Window for T smoothing (0=off, 3=like debug-pose)">Window: <input type="number" id="smoothWindow" min="0" max="200" step="1" value="3" style="width:3em;"></label>
+    <label title="R filter cutoff (Hz), quaternion lowpass – 0=raw, 1=soft (like debug-pose), 2=faster">R fc: <input type="number" id="rFilterFc" min="0" max="5" step="0.1" value="1" style="width:3em;"></label>
+    <label title="Origin at camera, Z = view axis; camera and frustum fixed, markers in camera space"><input type="checkbox" id="cameraCentricView" checked> Camera-centric view</label>
+    <label title="In camera-centric: shift origin to the right (mm) so camera is visible"><span class="muted">Cam offset:</span> <input type="number" id="camCentricOffset" min="-200" max="200" step="5" value="80" style="width:3.5em;"></label>
+  </div>
+
+  <div class="live-and-3d">
+    <div>
+      <p class="view3d-label" id="view3dLabel">Camera</p>
+      <div class="viewport">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <canvas id="canvas"></canvas>
+      </div>
+    </div>
+    <div>
+      <p class="view3d-label" id="view3dLabel2">3D: Camera-centric = origin at camera, Z = view; or Ref = origin. Plates = markers; orange = camera.</p>
+      <div class="view3d-wrap" id="view3dWrap">
+        <canvas id="view3d"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <p class="view3d-label" style="margin-top:0.75rem;">FPS (t)</p>
+  <div class="perf-wrap">
+    <canvas id="perfCanvas"></canvas>
+  </div>
+
+  <div class="state-panel">
+    <h2>World state</h2>
+    <p class="state-line">State: <span class="val" id="stateVal">IDLE</span></p>
+    <p class="state-line">Ref ID (world origin): <span class="val" id="refIdVal">—</span></p>
+    <p class="state-line">FOV (cal.): <span class="val" id="fovVal">—</span></p>
+    <p class="state-line">Scale (computed→real): <input type="number" id="scaleCorrection" min="0.5" max="2" step="0.01" value="1.03" style="width:4em;"> <span class="muted" style="font-size:0.8em;">(e.g. 206/200=1.03)</span></p>
+    <p class="state-line" id="distanceLine" style="display:none;">Ref–next: <span class="val" id="distanceVal">—</span> mm</p>
+    <p class="state-line" id="distancesFromRefLine" style="display:none;"><span class="muted">Ref→all:</span> <span id="distancesFromRefVal"></span></p>
+    <p class="state-line" id="otherPairsLine" style="display:none;"><span class="muted">Other pairs:</span> <span id="otherPairsVal"></span></p>
+    <p class="state-line">Markers in world:</p>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Tag (mm)</th><th title="World X (ref=origin)">X (mm)</th><th title="World Y (ref=origin)">Y (mm)</th><th title="World Z (ref=origin)">Z (mm)</th><th>rx°</th><th>ry°</th><th>rz°</th><th>Conf</th><th>Last</th></tr>
+      </thead>
+      <tbody id="markersBody"></tbody>
+    </table>
+  </div>
+
+  <p class="status" id="status">Load over HTTPS or localhost, then start the camera.</p>
+
+  <footer class="meta">
+    <p class="footer-by"><a href="https://mess.engineering" target="_blank" rel="noopener" title="Mattern Engineering &amp; Software Solutions">M.E.S.S.</a></p>
+  </footer>
+
+  <script src="kiss3d-pose.js"></script>
+  <script src="kiss3d-state.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    var scene, camera, renderer, markerGroup, cameraOriginMarker, markerMeshes = {}, controls;
+    var scene3dLoopId = null;
+    var smoothCenter = null;
+    var CENTER_SMOOTH_ALPHA = 0.06;
+    var cameraFrustumLines = null;
+    var sceneMarkerPos = {};
+    function initScene3D(containerId, canvasId) {
+      var container = document.getElementById(containerId);
+      var canvas = document.getElementById(canvasId);
+      if (!container || !canvas) return;
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0f0f12);
+      camera = new THREE.PerspectiveCamera(50, 1, 1, 50000);
+      camera.position.set(0, 200, 120);
+      camera.lookAt(0, 0, 0);
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      var resize = function () {
+        var w = container.clientWidth, h = container.clientHeight;
+        if (w === 0 || h === 0) return;
+        canvas.width = w;
+        canvas.height = h;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      };
+      resize();
+      window.addEventListener('resize', resize);
+      var sceneContentGroup = new THREE.Group();
+      scene.add(sceneContentGroup);
+      window.sceneContentGroup = sceneContentGroup;
+      markerGroup = new THREE.Group();
+      sceneContentGroup.add(markerGroup);
+      var axesGeom = new THREE.AxesHelper(15);
+      sceneContentGroup.add(axesGeom);
+      cameraOriginMarker = new THREE.Mesh(new THREE.BoxGeometry(8, 8, 8), new THREE.MeshBasicMaterial({ color: 0xe07040, wireframe: true }));
+      cameraOriginMarker.visible = false;
+      sceneContentGroup.add(cameraOriginMarker);
+      var frustumGeom = new THREE.BufferGeometry();
+      frustumGeom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(4 * 3 * 2), 3));
+      cameraFrustumLines = new THREE.LineSegments(frustumGeom, new THREE.LineBasicMaterial({ color: 0xe07040, linewidth: 1 }));
+      cameraFrustumLines.visible = false;
+      sceneContentGroup.add(cameraFrustumLines);
+      var frustumFacesGeom = new THREE.BufferGeometry();
+      frustumFacesGeom.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(5 * 3), 3));
+      frustumFacesGeom.setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]);
+      window.frustumFacesMesh = new THREE.Mesh(frustumFacesGeom, new THREE.MeshBasicMaterial({
+        color: 0xe07040,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide
+      }));
+      window.frustumFacesMesh.visible = false;
+      sceneContentGroup.add(window.frustumFacesMesh);
+      controls = new OrbitControls(camera, canvas);
+      controls.target.set(0, 0, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.enablePan = true;
+      window.scene3dInited = true;
+      function scene3dLoop() {
+        scene3dLoopId = requestAnimationFrame(scene3dLoop);
+        if (controls) controls.update();
+        if (renderer && scene && camera) renderer.render(scene, camera);
+      }
+      scene3dLoop();
+    }
+    /** Ref (smallest ID) = origin, or camera-centric: origin at camera, Z = view axis. */
+    function updateScene3D(world, scale, cameraPosWorld, cameraRotWorld, getTagSizeMm, videoW, videoH, getCameraK) {
+      if (!scene || !markerGroup) return;
+      scale = scale || 1;
+      getTagSizeMm = getTagSizeMm || function () { return 12; };
+      videoW = videoW || 640;
+      videoH = videoH || 480;
+      var cameraCentric = !!(document.getElementById('cameraCentricView') && document.getElementById('cameraCentricView').checked);
+      var camCentricOffset = 0;
+      var offsetInput = document.getElementById('camCentricOffset');
+      if (offsetInput) { var o = parseFloat(offsetInput.value, 10); if (!isNaN(o)) camCentricOffset = o; }
+      if (window.sceneContentGroup) {
+        window.sceneContentGroup.position.set(cameraCentric ? camCentricOffset : 0, 0, 0);
+      }
+      var markers = (world && world.markers) ? world.markers : {};
+      var ids = Object.keys(markers);
+      var used = {};
+      if (cameraCentric) {
+        smoothCenter = null;
+        controls.target.set(0, 0, 0);
+      } else {
+        var targetX = 0, targetY = 0, targetZ = 0;
+        if (ids.length > 0) {
+          var refId = world && world.ref_id != null ? String(world.ref_id) : null;
+          var refRec = refId && markers[refId] ? markers[refId] : null;
+          if (refRec && refRec.pos) {
+            targetX = refRec.pos[0] * scale;
+            targetY = refRec.pos[1] * scale;
+            targetZ = refRec.pos[2] * scale;
+          } else {
+            for (var ii = 0; ii < ids.length; ii++) {
+              var r = markers[ids[ii]];
+              var pp = r.pos || [0, 0, 0];
+              targetX += pp[0]; targetY += pp[1]; targetZ += pp[2];
+            }
+            targetX = (targetX / ids.length) * scale;
+            targetY = (targetY / ids.length) * scale;
+            targetZ = (targetZ / ids.length) * scale;
+          }
+          if (smoothCenter) {
+            smoothCenter[0] = CENTER_SMOOTH_ALPHA * targetX + (1 - CENTER_SMOOTH_ALPHA) * smoothCenter[0];
+            smoothCenter[1] = CENTER_SMOOTH_ALPHA * targetY + (1 - CENTER_SMOOTH_ALPHA) * smoothCenter[1];
+            smoothCenter[2] = CENTER_SMOOTH_ALPHA * targetZ + (1 - CENTER_SMOOTH_ALPHA) * smoothCenter[2];
+          } else {
+            smoothCenter = [targetX, targetY, targetZ];
+          }
+          controls.target.set(smoothCenter[0], smoothCenter[1], smoothCenter[2]);
+        } else {
+          smoothCenter = null;
+          controls.target.set(0, 0, 0);
+        }
+      }
+      if (cameraOriginMarker) {
+        if (cameraPosWorld && cameraPosWorld.length >= 3) {
+          cameraOriginMarker.visible = true;
+          if (cameraCentric) {
+            cameraOriginMarker.position.set(0, 0, 0);
+          } else {
+            cameraOriginMarker.position.set(cameraPosWorld[0] * scale, cameraPosWorld[1] * scale, cameraPosWorld[2] * scale);
+          }
+        } else {
+          cameraOriginMarker.visible = false;
+        }
+      }
+      if (cameraFrustumLines && cameraPosWorld && cameraPosWorld.length >= 3 && cameraRotWorld && cameraRotWorld.length >= 9) {
+        var R = cameraRotWorld;
+        var camX = cameraPosWorld[0] * scale, camY = cameraPosWorld[1] * scale, camZ = cameraPosWorld[2] * scale;
+        var d = 500 * scale;
+        var K = getCameraK && getCameraK(videoW, videoH);
+        var corners;
+        if (K && K.fx && K.fy != null) {
+          var fx = K.fx, fy = K.fy, cx = K.cx != null ? K.cx : videoW / 2, cy = K.cy != null ? K.cy : videoH / 2;
+          var w = videoW, h = videoH;
+          corners = [
+            [-d * cx / fx, d * cy / fy, d],
+            [d * (w - cx) / fx, d * cy / fy, d],
+            [d * (w - cx) / fx, -d * (h - cy) / fy, d],
+            [-d * cx / fx, -d * (h - cy) / fy, d]
+          ];
+        } else {
+          var t = Math.tan(25 * Math.PI / 180);
+          corners = [[-d * t, d * t, d], [d * t, d * t, d], [d * t, -d * t, d], [-d * t, -d * t, d]];
+        }
+        var pos = cameraFrustumLines.geometry.attributes.position.array;
+        if (cameraCentric) {
+          for (var c = 0; c < 4; c++) {
+            var x = corners[c][0], y = corners[c][1], z = corners[c][2];
+            var i = c * 6;
+            pos[i] = 0; pos[i + 1] = 0; pos[i + 2] = 0;
+            pos[i + 3] = x; pos[i + 4] = y; pos[i + 5] = z;
+          }
+          if (window.frustumFacesMesh) {
+            var posF = window.frustumFacesMesh.geometry.attributes.position.array;
+            posF[0] = 0; posF[1] = 0; posF[2] = 0;
+            posF[3] = pos[3]; posF[4] = pos[4]; posF[5] = pos[5];
+            posF[6] = pos[9]; posF[7] = pos[10]; posF[8] = pos[11];
+            posF[9] = pos[15]; posF[10] = pos[16]; posF[11] = pos[17];
+            posF[12] = pos[21]; posF[13] = pos[22]; posF[14] = pos[23];
+            window.frustumFacesMesh.geometry.attributes.position.needsUpdate = true;
+          }
+        } else {
+          for (var c = 0; c < 4; c++) {
+            var x = corners[c][0], y = corners[c][1], z = corners[c][2];
+            var wx = R[0] * x + R[3] * y + R[6] * z + camX;
+            var wy = R[1] * x + R[4] * y + R[7] * z + camY;
+            var wz = R[2] * x + R[5] * y + R[8] * z + camZ;
+            var i = c * 6;
+            pos[i] = camX; pos[i + 1] = camY; pos[i + 2] = camZ;
+            pos[i + 3] = wx; pos[i + 4] = wy; pos[i + 5] = wz;
+          }
+          if (window.frustumFacesMesh) {
+            var posF = window.frustumFacesMesh.geometry.attributes.position.array;
+            posF[0] = camX; posF[1] = camY; posF[2] = camZ;
+            posF[3] = pos[3]; posF[4] = pos[4]; posF[5] = pos[5];
+            posF[6] = pos[9]; posF[7] = pos[10]; posF[8] = pos[11];
+            posF[9] = pos[15]; posF[10] = pos[16]; posF[11] = pos[17];
+            posF[12] = pos[21]; posF[13] = pos[22]; posF[14] = pos[23];
+            window.frustumFacesMesh.geometry.attributes.position.needsUpdate = true;
+          }
+        }
+        cameraFrustumLines.geometry.attributes.position.needsUpdate = true;
+        cameraFrustumLines.visible = true;
+        if (window.frustumFacesMesh) window.frustumFacesMesh.visible = true;
+      } else {
+        if (cameraFrustumLines) cameraFrustumLines.visible = false;
+        if (window.frustumFacesMesh) window.frustumFacesMesh.visible = false;
+      }
+      var smoothA = (window.KISS3D && window.KISS3D.getSmoothAlpha) ? window.KISS3D.getSmoothAlpha() : 0.2;
+      var sceneAlpha = Math.min(0.5, smoothA * 0.35);
+      var R_cam_world = null;
+      if (cameraCentric && cameraPosWorld && cameraPosWorld.length >= 3 && cameraRotWorld && cameraRotWorld.length >= 9) {
+        var Rw = cameraRotWorld;
+        R_cam_world = [Rw[0], Rw[3], Rw[6], Rw[1], Rw[4], Rw[7], Rw[2], Rw[5], Rw[8]];
+      }
+      for (var ki in sceneMarkerPos) if (!markers[ki]) delete sceneMarkerPos[ki];
+      for (var i = 0; i < ids.length; i++) {
+        var id = ids[i];
+        used[id] = true;
+        var rec = markers[id];
+        var pos = rec.pos || [0, 0, 0];
+        var sx, sy, sz;
+        if (cameraCentric && R_cam_world && cameraPosWorld && cameraPosWorld.length >= 3) {
+          var px = pos[0] - cameraPosWorld[0], py = pos[1] - cameraPosWorld[1], pz = pos[2] - cameraPosWorld[2];
+          var cx_ = R_cam_world[0] * px + R_cam_world[1] * py + R_cam_world[2] * pz;
+          var cy_ = R_cam_world[3] * px + R_cam_world[4] * py + R_cam_world[5] * pz;
+          var cz_ = R_cam_world[6] * px + R_cam_world[7] * py + R_cam_world[8] * pz;
+          sx = cx_ * scale; sy = cy_ * scale; sz = cz_ * scale;
+        } else {
+          sx = pos[0] * scale; sy = pos[1] * scale; sz = pos[2] * scale;
+        }
+        if (!sceneMarkerPos[id]) sceneMarkerPos[id] = { x: sx, y: sy, z: sz };
+        else {
+          var a = sceneAlpha;
+          sceneMarkerPos[id].x = a * sx + (1 - a) * sceneMarkerPos[id].x;
+          sceneMarkerPos[id].y = a * sy + (1 - a) * sceneMarkerPos[id].y;
+          sceneMarkerPos[id].z = a * sz + (1 - a) * sceneMarkerPos[id].z;
+        }
+        var sp = sceneMarkerPos[id];
+        var tagMm = getTagSizeMm(id);
+        if (tagMm == null) tagMm = 12;
+        var w = 2.5 * tagMm, h = 1.5 * tagMm, d = 1;
+        if (!markerMeshes[id]) {
+          markerMeshes[id] = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: 0x8888aa }));
+          markerGroup.add(markerMeshes[id]);
+        } else {
+          var g = markerMeshes[id].geometry;
+          if (g.parameters.width !== w || g.parameters.height !== h || g.parameters.depth !== d) {
+            markerMeshes[id].geometry.dispose();
+            markerMeshes[id].geometry = new THREE.BoxGeometry(w, h, d);
+          }
+        }
+        markerMeshes[id].visible = true;
+        markerMeshes[id].position.set(sp.x, sp.y, sp.z);
+        if (rec.rot && rec.rot.length >= 9) {
+          var m = new THREE.Matrix4();
+          m.set(rec.rot[0], rec.rot[1], rec.rot[2], 0, rec.rot[3], rec.rot[4], rec.rot[5], 0, rec.rot[6], rec.rot[7], rec.rot[8], 0, 0, 0, 0, 1);
+          markerMeshes[id].setRotationFromMatrix(m);
+        }
+      }
+      for (var k in markerMeshes) if (!used[k]) markerMeshes[k].visible = false;
+    }
+    window.scene3dReady = true;
+    window.initScene3D = initScene3D;
+    window.updateScene3D = updateScene3D;
+  </script>
+  <script>
+    (function () {
+      var video = document.getElementById('video');
+      var overlay = document.getElementById('overlay');
+      var canvas = document.getElementById('canvas');
+      var btnStart = document.getElementById('btnStart');
+      var btnStop = document.getElementById('btnStop');
+      var btnReset = document.getElementById('btnReset');
+      var mirrorForDetection = document.getElementById('mirrorForDetection');
+      var stateVal = document.getElementById('stateVal');
+      var refIdVal = document.getElementById('refIdVal');
+      var distanceLine = document.getElementById('distanceLine');
+      var distanceVal = document.getElementById('distanceVal');
+      var distancesFromRefLine = document.getElementById('distancesFromRefLine');
+      var distancesFromRefVal = document.getElementById('distancesFromRefVal');
+      var otherPairsLine = document.getElementById('otherPairsLine');
+      var otherPairsVal = document.getElementById('otherPairsVal');
+      var scaleCorrectionInput = document.getElementById('scaleCorrection');
+      var smoothAlphaInput = document.getElementById('smoothAlpha');
+      var smoothCameraRotationCb = document.getElementById('smoothCameraRotation');
+      var smoothWindowInput = document.getElementById('smoothWindow');
+      var rFilterFcInput = document.getElementById('rFilterFc');
+      var markersBody = document.getElementById('markersBody');
+      var statusEl = document.getElementById('status');
+      var perfCanvas = document.getElementById('perfCanvas');
+      var resolutionSelect = document.getElementById('resolutionSelect');
+      var lastVideoW = 0, lastVideoH = 0;
+
+      function getCameraK(w, h) {
+        try {
+          var stored = localStorage.getItem('kiss3d_calibrated_K');
+          if (stored) {
+            var c = JSON.parse(stored);
+            var byRes = (c && c.byRes) ? c.byRes : null;
+            if (!byRes && c && c.fx != null && c.w > 0 && c.h > 0) {
+              var k = c.w + 'x' + c.h;
+              byRes = {}; byRes[k] = { fx: c.fx, fy: c.fy, cx: c.cx, cy: c.cy };
+            }
+            if (byRes) {
+              var key = w + 'x' + h;
+              if (byRes[key]) return byRes[key];
+            }
+          }
+        } catch (e) {}
+        return null;
+      }
+
+      var stream = null;
+      var detector = null;
+      var animationId = null;
+      var aprilTagReady = null;
+      var aprilTagGrayBuffer = null;
+      var aprilTagGrayPixels = 0;
+      var fpsHistory = [];
+      var lastFpsTime = 0;
+      var FPS_HISTORY_MAX = 600;
+      var displayPos = {};
+      var DISPLAY_SMOOTH_ALPHA = 0.12;
+
+      function setStatus(msg, isError) {
+        statusEl.textContent = msg || '';
+        statusEl.classList.toggle('error', !!isError);
+      }
+
+      function hasCameraSupport() {
+        return typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function';
+      }
+
+      function setAprilTagReady() {
+        if (aprilTagReady) return aprilTagReady;
+        var resolveReady;
+        aprilTagReady = new Promise(function (resolve) { resolveReady = resolve; });
+        var base = 'https://arenaxr.github.io/apriltag-js-standalone/';
+        window.AprilTagWasmModule = { locateFile: function (path) { return base + path; } };
+        var script = document.createElement('script');
+        script.src = base + 'apriltag_wasm.js';
+        script.onload = function () {
+          var getPromise = function () {
+            var w = window.AprilTagWasm;
+            if (typeof w === 'function') return w(window.AprilTagWasmModule);
+            if (w && typeof w.then === 'function') return w;
+            return null;
+          };
+          var promise = getPromise();
+          if (!promise) {
+            setTimeout(function () {
+              var p = getPromise();
+              if (p) p.then(onModule).catch(onErr); else resolveReady(null);
+            }, 100);
+            return;
+          }
+          promise.then(onModule).catch(onErr);
+          function onModule(Module) {
+            try {
+              var _init = Module.cwrap('atagjs_init', 'number', []);
+              var _set_opts = Module.cwrap('atagjs_set_detector_options', 'number', ['number', 'number', 'number', 'number', 'number', 'number', 'number']);
+              var _set_img = Module.cwrap('atagjs_set_img_buffer', 'number', ['number', 'number', 'number']);
+              var _detect = Module.cwrap('atagjs_detect', 'number', []);
+              _init();
+              _set_opts(2.0, 0, 1, 1, 0, 0, 0);
+              detector = {
+                detect: function (grayscale, w, h) {
+                  var buf = _set_img(w, h, w);
+                  Module.HEAPU8.set(grayscale, buf);
+                  var ptr = _detect();
+                  var len = Module.getValue(ptr, 'i32');
+                  if (len === 0) return [];
+                  var strPtr = Module.getValue(ptr + 4, 'i32');
+                  var view = new Uint8Array(Module.HEAP8.buffer, strPtr, len);
+                  var str = '';
+                  for (var i = 0; i < len; i++) str += String.fromCharCode(view[i]);
+                  return JSON.parse(str);
+                }
+              };
+              resolveReady(detector);
+            } catch (e) {
+              resolveReady(null);
+            }
+          }
+          function onErr(err) {
+            resolveReady(null);
+          }
+        };
+        script.onerror = function () { resolveReady(null); };
+        document.head.appendChild(script);
+        return aprilTagReady;
+      }
+
+      function imageDataToGray(imageData, intoBuffer) {
+        var d = imageData.data;
+        var n = imageData.width * imageData.height;
+        var out = intoBuffer && intoBuffer.length >= n ? intoBuffer : new Uint8Array(n);
+        for (var i = 0, j = 0; i < d.length; i += 4, j++) out[j] = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        return out;
+      }
+
+      function drawOverlay(markers) {
+        var w = overlay.width;
+        var h = overlay.height;
+        var ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+        if (!markers || markers.length === 0) return;
+        ctx.lineWidth = 3;
+        ctx.font = 'bold 18px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (var i = 0; i < markers.length; i++) {
+          var c = markers[i].corners;
+          if (!c || c.length < 4) continue;
+          ctx.strokeStyle = '#00d4aa';
+          ctx.beginPath();
+          ctx.moveTo(c[0].x, c[0].y);
+          for (var j = 1; j < c.length; j++) ctx.lineTo(c[j].x, c[j].y);
+          ctx.closePath();
+          ctx.stroke();
+          var cx = (c[0].x + c[1].x + c[2].x + c[3].x) / 4;
+          var cy = (c[0].y + c[1].y + c[2].y + c[3].y) / 4;
+          ctx.fillStyle = 'rgba(0,0,0,0.75)';
+          var label = String(Number(markers[i].id));
+          var m = ctx.measureText(label);
+          ctx.fillRect(cx - m.width / 2 - 4, cy - 10, m.width + 8, 20);
+          ctx.fillStyle = '#00d4aa';
+          ctx.fillText(label, cx, cy);
+        }
+      }
+
+      function updateStateUI() {
+        var w = window.KISS3D && KISS3D.getWorld ? KISS3D.getWorld() : null;
+        if (!w) return;
+        stateVal.textContent = w.state;
+        refIdVal.textContent = w.ref_id !== null ? String(w.ref_id) : '—';
+        if (btnStart) btnStart.disabled = stream ? (w.state !== 'IDLE') : false;
+        var ids = Object.keys(w.markers).sort(function (a, b) { return Number(a) - Number(b); });
+        var scale = (window.KISS3D && KISS3D.getScaleCorrection) ? KISS3D.getScaleCorrection() : 1;
+        var alpha = DISPLAY_SMOOTH_ALPHA;
+        for (var di in displayPos) if (!w.markers[di]) delete displayPos[di];
+        for (var idx = 0; idx < ids.length; idx++) {
+          var id = ids[idx];
+          var rec = w.markers[id];
+          var pos = rec.pos || [0, 0, 0];
+          var sx = pos[0] * scale, sy = pos[1] * scale, sz = pos[2] * scale;
+          if (!displayPos[id]) displayPos[id] = { x: sx, y: sy, z: sz };
+          else {
+            displayPos[id].x = alpha * sx + (1 - alpha) * displayPos[id].x;
+            displayPos[id].y = alpha * sy + (1 - alpha) * displayPos[id].y;
+            displayPos[id].z = alpha * sz + (1 - alpha) * displayPos[id].z;
+          }
+        }
+        function distMmObj(a, b) {
+          if (!a || !b || a.x == null || b.x == null) return NaN;
+          var dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+          return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        if (distanceLine && distanceVal) {
+          if (ids.length >= 2 && w.ref_id != null) {
+            var refD = displayPos[String(w.ref_id)];
+            var nextD = displayPos[ids[1]];
+            if (refD && nextD) {
+              distanceLine.style.display = '';
+              distanceVal.textContent = distMmObj(refD, nextD).toFixed(1);
+            } else { distanceLine.style.display = 'none'; }
+          } else { distanceLine.style.display = 'none'; }
+        }
+        if (distancesFromRefLine && distancesFromRefVal && ids.length >= 2 && w.ref_id != null) {
+          var refD = displayPos[String(w.ref_id)];
+          var parts = [];
+          for (var d = 0; d < ids.length; d++) {
+            if (ids[d] === String(w.ref_id)) continue;
+            var pD = displayPos[ids[d]];
+            if (refD && pD) parts.push(ids[d] + ': ' + distMmObj(refD, pD).toFixed(1));
+          }
+          if (parts.length) {
+            distancesFromRefLine.style.display = '';
+            distancesFromRefVal.textContent = parts.join(' mm, ') + ' mm';
+          } else { distancesFromRefLine.style.display = 'none'; }
+        } else if (distancesFromRefLine) { distancesFromRefLine.style.display = 'none'; }
+        if (otherPairsLine && otherPairsVal && ids.length >= 3) {
+          var pairs = [];
+          for (var i1 = 1; i1 < Math.min(ids.length, 5); i1++) {
+            for (var i2 = i1 + 1; i2 < Math.min(ids.length, 5); i2++) {
+              var pa = displayPos[ids[i1]];
+              var pb = displayPos[ids[i2]];
+              if (pa && pb) pairs.push(ids[i1] + '–' + ids[i2] + ' ' + distMmObj(pa, pb).toFixed(1) + ' mm');
+            }
+          }
+          if (pairs.length) {
+            otherPairsLine.style.display = '';
+            otherPairsVal.textContent = pairs.join(', ');
+          } else { otherPairsLine.style.display = 'none'; }
+        } else if (otherPairsLine) { otherPairsLine.style.display = 'none'; }
+        function rotToEulerDeg(R) {
+          if (!R || R.length < 9) return { rx: '—', ry: '—', rz: '—' };
+          var rx, ry, rz;
+          var sinRy = Math.max(-1, Math.min(1, R[6]));
+          ry = Math.asin(sinRy);
+          var cosRy = Math.cos(ry);
+          if (Math.abs(cosRy) > 1e-6) {
+            rx = Math.atan2(-R[7], R[8]);
+            rz = Math.atan2(-R[3], R[0]);
+          } else {
+            rx = Math.atan2(-R[5], R[4]);
+            rz = 0;
+          }
+          var rad2deg = 180 / Math.PI;
+          return { rx: (rx * rad2deg).toFixed(1), ry: (ry * rad2deg).toFixed(1), rz: (rz * rad2deg).toFixed(1) };
+        }
+        markersBody.innerHTML = '';
+        for (var i = 0; i < ids.length; i++) {
+          var id = ids[i];
+          var rec = w.markers[id];
+          var tagMm = KISS3D.getTagSizeMm(id);
+          var dp = displayPos[id];
+          var px = dp ? dp.x : (rec.pos[0] * scale), py = dp ? dp.y : (rec.pos[1] * scale), pz = dp ? dp.z : (rec.pos[2] * scale);
+          var e = rotToEulerDeg(rec.rot);
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + id + '</td><td>' + (tagMm != null ? tagMm + ' mm' : '—') + '</td><td>' + px.toFixed(1) + '</td><td>' + py.toFixed(1) + '</td><td>' + pz.toFixed(1) + '</td><td>' + e.rx + '</td><td>' + e.ry + '</td><td>' + e.rz + '</td><td>' + (rec.confidence || 0) + '</td><td>' + (rec.last_seen ? rec.last_seen.toFixed(1) : '—') + '</td>';
+          markersBody.appendChild(tr);
+        }
+      }
+
+      function drawPerfTimeline() {
+        if (!perfCanvas || !perfCanvas.parentElement) return;
+        var cw = perfCanvas.parentElement.clientWidth || 400;
+        var ch = 56;
+        if (perfCanvas.width !== cw || perfCanvas.height !== ch) {
+          perfCanvas.width = cw;
+          perfCanvas.height = ch;
+        }
+        var ctx = perfCanvas.getContext('2d');
+        ctx.fillStyle = '#1a1a20';
+        ctx.fillRect(0, 0, cw, ch);
+        if (fpsHistory.length < 2) return;
+        var now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        var tEnd = now;
+        var tStart = Math.max(0, tEnd - 10000);
+        var span = tEnd - tStart;
+        if (span <= 0) return;
+        var maxFps = 60;
+        for (var i = 0; i < fpsHistory.length; i++) {
+          if (fpsHistory[i].fps > maxFps) maxFps = Math.ceil(fpsHistory[i].fps);
+        }
+        maxFps = Math.max(60, maxFps);
+        ctx.strokeStyle = '#00d4aa';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        var first = true;
+        for (var j = 0; j < fpsHistory.length; j++) {
+          var pt = fpsHistory[j];
+          if (pt.t < tStart) continue;
+          var x = ((pt.t - tStart) / span) * (cw - 2) + 1;
+          var y = ch - 1 - (pt.fps / maxFps) * (ch - 2);
+          if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#888';
+        ctx.font = '10px monospace';
+        ctx.fillText('0', 2, ch - 2);
+        ctx.fillText(maxFps + ' FPS', cw - 42, 10);
+      }
+
+      function tick() {
+        animationId = requestAnimationFrame(tick);
+        if (!stream || !detector || video.readyState < 2) return;
+        var now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        if (lastFpsTime > 0) {
+          var fps = 1000 / (now - lastFpsTime);
+          fpsHistory.push({ t: now, fps: fps });
+          while (fpsHistory.length > FPS_HISTORY_MAX) fpsHistory.shift();
+        }
+        lastFpsTime = now;
+        var w = video.videoWidth;
+        var h = video.videoHeight;
+        if (w === 0 || h === 0) return;
+        if (w !== lastVideoW || h !== lastVideoH) {
+          lastVideoW = w; lastVideoH = h;
+          var K = getCameraK(w, h);
+          if (window.KISS3D) {
+            if (K) KISS3D.setCamera(K); else KISS3D.setCameraFromImage(w, h);
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        overlay.width = w;
+        overlay.height = h;
+        var ctx = canvas.getContext('2d');
+        if (mirrorForDetection && mirrorForDetection.checked) {
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, -w, 0, w, h);
+          ctx.restore();
+        } else {
+          ctx.drawImage(video, 0, 0, w, h);
+        }
+        var imageData = ctx.getImageData(0, 0, w, h);
+        var n = w * h;
+        if (!aprilTagGrayBuffer || aprilTagGrayPixels !== n) {
+          aprilTagGrayBuffer = new Uint8Array(n);
+          aprilTagGrayPixels = n;
+        }
+        imageDataToGray(imageData, aprilTagGrayBuffer);
+        var markers = detector.detect(aprilTagGrayBuffer, w, h);
+        var mirror = mirrorForDetection && mirrorForDetection.checked;
+        video.style.transform = mirror ? 'scaleX(-1)' : '';
+        if (window.KISS3D && KISS3D.updateFromDetections) {
+          KISS3D.updateFromDetections(markers, now);
+        }
+        drawOverlay(markers);
+        var view3dWrap = document.getElementById('view3dWrap');
+        var view3dVisible = view3dWrap && (function () {
+          var r = view3dWrap.getBoundingClientRect();
+          return r.top < (window.innerHeight || document.documentElement.clientHeight) && r.bottom > 0 && r.left < (window.innerWidth || document.documentElement.clientWidth) && r.right > 0;
+        })();
+        if (view3dVisible) {
+          updateStateUI();
+          if (window.scene3dReady && !window.scene3dInited) {
+            if (window.initScene3D) window.initScene3D('view3dWrap', 'view3d');
+          }
+          if (window.updateScene3D && window.KISS3D && window.scene3dInited) {
+            window.updateScene3D(KISS3D.getWorld(), KISS3D.getScaleCorrection(), KISS3D.getCameraPositionInWorld(), KISS3D.getCameraRotationInWorld(), KISS3D.getTagSizeMm, w, h, getCameraK);
+          }
+          var fovEl = document.getElementById('fovVal');
+          if (fovEl) {
+            var K = getCameraK(w, h);
+            if (K && K.fx && K.fy != null) {
+              var fovH = 2 * Math.atan(w / (2 * K.fx)) * 180 / Math.PI;
+              var fovV = 2 * Math.atan(h / (2 * K.fy)) * 180 / Math.PI;
+              fovEl.textContent = 'H ' + fovH.toFixed(1) + '\u00B0 V ' + fovV.toFixed(1) + '\u00B0';
+            } else {
+              fovEl.textContent = '\u2014';
+            }
+          }
+          drawPerfTimeline();
+        }
+      }
+
+      btnStart.addEventListener('click', function () {
+        if (stream) {
+          if (window.KISS3D && KISS3D.getState && KISS3D.getState() === 'IDLE' && KISS3D.startCapture) {
+            KISS3D.startCapture();
+            updateStateUI();
+            setStatus('Capture started.');
+          }
+          return;
+        }
+        if (!hasCameraSupport()) {
+          document.getElementById('secureWarning').style.display = 'block';
+          setStatus('Camera API not available. Use HTTPS or localhost.', true);
+          return;
+        }
+        document.getElementById('secureWarning').style.display = 'none';
+        setStatus('Loading AprilTag WASM…');
+        setAprilTagReady().then(function (d) {
+          if (!d) {
+            setStatus('AprilTag failed to load.', true);
+            return;
+          }
+          setStatus('Requesting camera…');
+          var res = resolutionSelect ? resolutionSelect.value : '640';
+          var width = 640, height = 480;
+          if (res === '720') { width = 1280; height = 720; } else if (res === '1080') { width = 1920; height = 1080; }
+          lastVideoW = 0; lastVideoH = 0;
+          navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: width }, height: { ideal: height } },
+            audio: false
+          }).then(function (s) {
+            stream = s;
+            video.srcObject = stream;
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+            if (window.KISS3D && KISS3D.reset) KISS3D.reset();
+            if (window.KISS3D && KISS3D.startCapture) KISS3D.startCapture();
+            setStatus('Camera on. Point at AprilTags (36h11).');
+            tick();
+          }).catch(function (err) {
+            setStatus('Camera error: ' + (err.message || err.name), true);
+          });
+        });
+      });
+
+      btnStop.addEventListener('click', function () {
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+          animationId = null;
+        }
+        if (stream) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          stream = null;
+        }
+        video.srcObject = null;
+        detector = null;
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        setStatus('Camera stopped.');
+      });
+
+      btnReset.addEventListener('click', function () {
+        if (window.KISS3D && KISS3D.reset) KISS3D.reset();
+        updateStateUI();
+        setStatus('World reset. Click Start to capture again.');
+      });
+
+      if (smoothCameraRotationCb) {
+        smoothCameraRotationCb.addEventListener('change', function () {
+          if (window.KISS3D && KISS3D.setSmoothCameraRotation) KISS3D.setSmoothCameraRotation(smoothCameraRotationCb.checked);
+        });
+      }
+      if (smoothAlphaInput) {
+        smoothAlphaInput.addEventListener('input', function () {
+          var v = parseFloat(smoothAlphaInput.value, 10);
+          if (window.KISS3D && KISS3D.setSmoothAlpha && !isNaN(v)) KISS3D.setSmoothAlpha(v);
+        });
+        smoothAlphaInput.addEventListener('change', function () {
+          var v = parseFloat(smoothAlphaInput.value, 10);
+          if (window.KISS3D && KISS3D.setSmoothAlpha && !isNaN(v)) KISS3D.setSmoothAlpha(v);
+        });
+        if (window.KISS3D && KISS3D.setSmoothAlpha) KISS3D.setSmoothAlpha(0.2);
+      }
+      if (smoothWindowInput) {
+        smoothWindowInput.addEventListener('input', function () {
+          var v = parseInt(smoothWindowInput.value, 10);
+          if (window.KISS3D && KISS3D.setSmoothWindow && !isNaN(v)) KISS3D.setSmoothWindow(v);
+        });
+        smoothWindowInput.addEventListener('change', function () {
+          var v = parseInt(smoothWindowInput.value, 10);
+          if (window.KISS3D && KISS3D.setSmoothWindow && !isNaN(v)) KISS3D.setSmoothWindow(v);
+        });
+        if (window.KISS3D && KISS3D.setSmoothWindow) KISS3D.setSmoothWindow(3);
+      }
+      if (rFilterFcInput) {
+        rFilterFcInput.addEventListener('input', function () {
+          var v = parseFloat(rFilterFcInput.value, 10);
+          if (window.KISS3D && KISS3D.setRFilterFc && !isNaN(v)) KISS3D.setRFilterFc(v);
+        });
+        rFilterFcInput.addEventListener('change', function () {
+          var v = parseFloat(rFilterFcInput.value, 10);
+          if (window.KISS3D && KISS3D.setRFilterFc && !isNaN(v)) KISS3D.setRFilterFc(v);
+        });
+        if (window.KISS3D && KISS3D.setRFilterFc) KISS3D.setRFilterFc(1);
+      }
+      if (window.KISS3D && KISS3D.setSmoothCameraRotation) KISS3D.setSmoothCameraRotation(true);
+
+      if (scaleCorrectionInput) {
+        function onScaleChange() {
+          var v = parseFloat(scaleCorrectionInput.value, 10);
+          if (window.KISS3D && KISS3D.setScaleCorrection && !isNaN(v)) KISS3D.setScaleCorrection(v);
+          updateStateUI();
+          if (window.updateScene3D && window.KISS3D && window.scene3dInited) {
+            window.updateScene3D(KISS3D.getWorld(), KISS3D.getScaleCorrection(), KISS3D.getCameraPositionInWorld(), KISS3D.getCameraRotationInWorld(), KISS3D.getTagSizeMm, lastVideoW || 640, lastVideoH || 480, getCameraK);
+          }
+        }
+        scaleCorrectionInput.addEventListener('input', onScaleChange);
+        scaleCorrectionInput.addEventListener('change', onScaleChange);
+      }
+      if (window.KISS3D && KISS3D.setScaleCorrection) KISS3D.setScaleCorrection(1.03);
+
+      setTimeout(function () {
+        if (window.scene3dReady && !window.scene3dInited && window.initScene3D) {
+          window.initScene3D('view3dWrap', 'view3d');
+        }
+      }, 100);
+
+      updateStateUI();
+    })();
+  </script>
+</body>
+</html>

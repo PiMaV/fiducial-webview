@@ -11,6 +11,9 @@ Browser-based **AprilTag** and **ArUco** scanner and pattern generator — no se
 - **In-browser detection** — [js-aruco2](https://github.com/damianofalcioni/js-aruco2); dictionaries embedded
 - **Live camera** — Video feed with cyan overlay, optional gray/binary debug view
 - **Pattern generator** — Grid layout (click to fill/clear), Smiley & Logo presets, PNG download
+- **KISS-3D Tracker** — Metrische 3D-Welt aus AprilTag + Kamera (Ref = kleinste ID), State IDLE/CAPTURE/LOCKED, Abstaende in mm
+- **Debug T/R** — Einzelmarker Pose (Translation/Rotation) ueber Zeit, Massstab, Kalibrierung M1/M2
+- **Camera calibration** — Ruler-based K-matrix (pro Aufloesung), Verifikation mit Markern
 - **Mobile-friendly** — Throttled on small screens; works over HTTPS
 
 ## Quick Start
@@ -27,6 +30,13 @@ Camera requires **HTTPS or localhost** (secure context). Options:
 | **index.html** | Landing page |
 | **scanner.html** | Camera-based scanner (AprilTag / ArUco) |
 | **generator.html** | Pattern generator (grid, presets, PNG export) |
+| **tracker3d.html** | KISS-3D Tracker (world model, Ref = smallest ID, live 3D view) |
+| **debug-pose.html** | Debug T/R (single-marker pose over time, scale, M1/M2 calibration) |
+| **calibrate.html** | Camera calibration (ruler-based K, per resolution) |
+| **kiss3d-state.js** | World model, state machine (IDLE/CAPTURE/LOCKED), pose update |
+| **kiss3d-pose.js** | Pose from 4 corners (homography + R,t), default camera |
+
+Tracker details: **Konzept-3D-Tracker.md**, **Plan-KISS-3D-Makro.md**; current status and TODO: **TRACKER-STATUS.md**.
 
 ## Tests
 

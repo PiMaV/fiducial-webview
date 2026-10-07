@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>Debug: T/R over time (single marker)</title>
+  <link rel="icon" href="https://mess.engineering/favicon/favicon.ico" type="image/x-icon">
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #1a1a20;
+      --border: #2a2a32;
+      --accent: #00d4aa;
+      --text: #e8e8ec;
+      --muted: #888;
+      --error: #e05555;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+    }
+    h1 { font-size: clamp(1.2rem, 4vw, 1.5rem); font-weight: 600; color: var(--accent); margin: 0 0 0.5rem 0; }
+    .sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
+    .nav-links { font-size: 1rem; margin-bottom: 1rem; }
+    .nav-links a { color: var(--accent); text-decoration: none; }
+    .nav-links a:hover { text-decoration: underline; }
+    .nav-sep { color: var(--muted); margin: 0 0.4rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; justify-content: center; align-items: center; }
+    .calib-fallback { margin: 0 0.5rem; }
+    .calib-fallback summary { cursor: pointer; font-size: 0.9rem; color: var(--muted); }
+    .calib-inner { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0; }
+    button {
+      font-family: inherit; font-size: 0.9rem; padding: 0.6rem 1.2rem;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--text); cursor: pointer;
+    }
+    button:hover { background: #25252c; border-color: var(--accent); }
+    button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    select { font-family: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+    .layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: center;
+      width: 100%;
+      max-width: 1200px;
+    }
+    .layout-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      align-items: flex-start;
+      width: 100%;
+    }
+    .hist-container {
+      flex: 0 0 200px;
+      min-width: 180px;
+    }
+    .viewport-wrap {
+      width: 100%;
+      max-width: 720px;
+    }
+    .viewport {
+      width: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      aspect-ratio: 16/9;
+      max-height: 54vh;
+    }
+    #video { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0.5; }
+    .viewport { position: relative; }
+    #video { position: relative; z-index: 0; }
+    #overlay { position: absolute; inset: 0; z-index: 1; pointer-events: none; width: 100%; height: 100%; object-fit: contain; }
+    .plots {
+      flex: 1;
+      min-width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .plot-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .plot-wrap canvas:not(.scale-sparkline) { display: block; width: 100%; height: 120px; }
+    .scale-sparkline { width: 80px; height: 24px; flex-shrink: 0; }
+    .plot-label { font-size: 0.75rem; color: var(--muted); padding: 0.25rem 0.5rem; }
+    .values-line {
+      font-size: 0.9rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 0.5rem;
+    }
+    .values-line .val { color: var(--accent); }
+    .val-fld { display: inline-block; width: 5em; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+    .val-row { margin-bottom: 0.25rem; }
+    .val-label { display: inline-block; width: 2em; color: var(--muted); }
+    .val-grid { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0.5rem 0; }
+    .val-block { min-width: 12em; }
+    .scale-row { display: flex; align-items: center; gap: 0.5rem; }
+    .scale-row .scale-val { min-width: 4em; }
+    .scale-sparkline { vertical-align: middle; background: var(--bg); border-radius: 4px; }
+    .calib-box { margin-top: 0.5rem; }
+    .calib-inner-box { display: flex; flex-wrap: wrap; gap: 1rem; padding: 0.5rem 0.75rem; }
+    .calib-block { min-width: 10em; }
+    .calib-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .calib-block .k-values { font-size: 0.85rem; font-family: monospace; }
+    .secure-warning {
+      background: var(--surface); border: 1px solid var(--error); border-radius: 8px;
+      padding: 1rem; margin-bottom: 1rem; max-width: 560px; font-size: 0.9rem;
+    }
+    .secure-warning strong { color: var(--error); }
+    .status { margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); text-align: center; }
+    .status.error { color: var(--error); }
+    .info-panel {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-width: 720px;
+      width: 100%;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .info-panel summary { cursor: pointer; color: var(--accent); }
+    .info-panel ul { margin: 0.5rem 0; padding-left: 1.2rem; }
+    .info-panel .k-values { font-family: monospace; font-size: 0.9em; }
+    .credits { margin: 2.5rem auto 0 auto; padding: 0.75rem 1rem; max-width: 30rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.75rem; line-height: 1.35; text-align: left; }
+    .credits h2 { font-size: 0.8rem; color: var(--accent); margin: 0 0 0.35rem 0; }
+    .credits ul { margin: 0 0 0.5rem 0; padding-left: 1rem; }
+    .credits li { margin-bottom: 0.15rem; }
+    .credits a { color: var(--accent); text-decoration: none; }
+    .credits a:hover { text-decoration: underline; }
+    .credits .refs { margin-top: 0.5rem; }
+    .footer-by { margin-top: 0.75rem; padding-bottom: 0.5rem; font-size: 1.2rem; color: var(--muted); text-align: center; }
+    .footer-by a { color: var(--accent); text-decoration: none; }
+    .footer-by a:hover { text-decoration: underline; }
+    footer.meta { width: 100%; display: flex; flex-direction: column; align-items: center; padding-bottom: 0.75rem; }
+    .source-link { display: inline-block; padding: 0.35rem 0.85rem; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.9rem; text-decoration: none; transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s; }
+    .source-link:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px rgba(0, 255, 200, 0.14); transform: translateY(-1px); }
+    .source-link:active { transform: translateY(0); }
+    .source-link-wrap { text-align: center; margin-top: 1.25rem; }
+  </style>
+</head>
+<body>
+  <h1>Debug: T/R over time</h1>
+  <p class="sub">Single marker (N=1,2,… which one is shown). Fadeout on loss. M1↔M2 xy for calibration.</p>
+  <nav class="nav-links">
+    <a href="index.html">Home</a>
+    <span class="nav-sep">·</span>
+    <a href="scanner.html">Scanner</a>
+    <span class="nav-sep">·</span>
+    <a href="tracker3d.html">Tracker 3D</a>
+    <span class="nav-sep">·</span>
+    <a href="calibrate.html">Calibrate</a>
+  </nav>
+
+  <div id="secureWarning" class="secure-warning" style="display: none;">
+    <strong>Camera not available</strong><br>
+    HTTPS or <code>localhost</code> required.
+  </div>
+
+  <div class="controls">
+    <button id="btnStart" class="primary">Start camera</button>
+    <button id="btnStop" disabled>Stop camera</button>
+    <label title="Video resolution – changes after restart"><span class="muted">Resolution:</span>
+      <select id="resolutionSelect">
+        <option value="640">640×480</option>
+        <option value="720">1280×720</option>
+        <option value="1080">1920×1080</option>
+      </select>
+    </label>
+    <label title="Mirror display only; detection stays unmirrored"><input type="checkbox" id="mirrorForDetection"> Mirror (display)</label>
+    <label title="Window for T smoothing and graph (0=off, 1+ = samples)">Window: <input type="number" id="smoothWindow" min="0" max="200" step="1" value="3" style="width:3.5em;"></label>
+    <label title="R filter cutoff (Hz, quaternion SLERP) – 0=raw, 1=soft, 2=faster">R fc: <input type="number" id="rFilterFc" min="0" max="5" step="0.1" value="1" style="width:3em;"></label>
+    <label title="Window for STD/binning">STD window: <input type="number" id="stdWindow" min="10" max="200" value="60" style="width:3em;"></label>
+    <span class="muted">Distance:</span> M1↔M2 below. <a href="calibrate.html" title="Calibration &amp; verification">→ Calibrate/verify</a>
+    <label title="Which marker is shown (1=first, 2=second, …)"><span class="muted">Marker #:</span> <input type="number" id="nMarkers" min="1" max="50" value="1" style="width:3em;"></label>
+    <label title="Fadeout time when marker is lost"><span class="muted">Fadeout:</span> <input type="number" id="fadeoutMs" min="200" max="5000" step="100" value="1000" style="width:4em;"> ms</label>
+  </div>
+
+  <div class="layout">
+    <div class="viewport-wrap">
+      <div class="viewport">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <canvas id="canvas" style="display:none;"></canvas>
+      </div>
+    </div>
+    <div class="layout-row">
+      <div class="plots">
+        <div class="plot-wrap">
+          <div class="plot-label">T (tx, ty, tz) mm – camera frame</div>
+          <canvas id="plotT"></canvas>
+        </div>
+        <div class="plot-wrap">
+          <div class="plot-label">R (rx, ry, rz) Grad – Euler ZYX ±90/±180</div>
+          <canvas id="plotR"></canvas>
+        </div>
+        <div class="values-line" id="valuesLine">
+          <span class="muted" id="markerInfo">Marker: —</span>
+          <div class="val-grid">
+            <div class="val-block">
+              <div class="val-row"><span class="val-label">T</span> <span class="val-fld" id="valTx">—</span> <span class="val-fld" id="valTy">—</span> <span class="val-fld" id="valTz">—</span> mm</div>
+              <div class="val-row"><span class="val-label">σ</span> <span class="val-fld" id="valSigTx">—</span> <span class="val-fld" id="valSigTy">—</span> <span class="val-fld" id="valSigTz">—</span></div>
+            </div>
+            <div class="val-block">
+              <div class="val-row"><span class="val-label">R</span> <span class="val-fld" id="valRx">—</span> <span class="val-fld" id="valRy">—</span> <span class="val-fld" id="valRz">—</span> deg</div>
+              <div class="val-row"><span class="val-label">σ</span> <span class="val-fld" id="valSigRx">—</span> <span class="val-fld" id="valSigRy">—</span> <span class="val-fld" id="valSigRz">—</span></div>
+            </div>
+          </div>
+          <div class="val-row"><span class="muted">M1↔M2 (xy/X):</span> <span class="val-fld" id="valDist12xy">—</span> <span class="muted">3D:</span> <span class="val-fld" id="valDist12">—</span> mm</div>
+        </div>
+        <div class="calib-box plot-wrap">
+          <div class="plot-label">K-matrix &amp; scale</div>
+          <div class="calib-inner-box">
+            <div class="calib-block">
+              <div class="calib-label">K (aktuell)</div>
+              <div id="kMatrixInfo" class="k-values">—</div>
+            </div>
+            <div class="calib-block">
+              <div class="calib-label">Scale</div>
+              <div class="scale-row">
+                <span class="val-fld scale-val" id="valScaleFactor">—</span>
+                <canvas id="scaleSparkline" class="scale-sparkline" width="80" height="24" title="Scale over time"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hist-container">
+        <div class="plot-wrap">
+          <div class="plot-label">Histogramme (tx ty tz rx ry rz)</div>
+          <canvas id="plotHist" style="height:220px;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="status" id="status">Use HTTPS or localhost, then start camera.</p>
+
+  <details class="info-panel">
+    <summary>Assumptions &amp; camera model (per user/camera)</summary>
+    <p><strong>K source:</strong> localStorage (calibrate.html) or <code>defaultCamera(w,h)</code>. <a href="calibrate.html">Calibrate camera</a>.</p>
+    <ul>
+      <li><strong>Per user/camera:</strong> Focal length (fx, fy), distortion (fisheye, etc.), principal point.</li>
+      <li><strong>Tag size LUT:</strong> ID 100–199=6mm, 200–299=12mm, 300–399=20mm.</li>
+      <li><strong>R fc:</strong> Quaternion SLERP lowpass for rotation. 0=raw, 1 Hz=soft (default), 2 Hz=faster.</li>
+      <li><strong>K-matrix:</strong> Calibrate in calibrate.html. Verification: place 3 markers, check distances.</li>
+      <li><strong>Distance:</strong> Shows distance between first and second visible marker (3D).</li>
+    </ul>
+  </details>
+
+  <script src="kiss3d-pose.js"></script>
+  <script src="kiss3d-state.js"></script>
+  <script src="debug-pose-engine.js"></script>
+  <script>
+    (function loadRulerLut() {
+      var fallback = {
+        rulers: [
+          { name: "Lineal 50mm S (150-152)", ids: [150, 151, 152], axis: "xyz", distMm: 15 },
+          { name: "Lineal 100mm S (160-165)", ids: [160, 161, 162, 163, 164, 165], axis: "xyz", distMm: 15 },
+          { name: "Lineal 200mm S (180-192)", ids: [180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192], axis: "xyz", distMm: 15 },
+          { name: "Lineal 150mm M (250-254)", ids: [250, 251, 252, 253, 254], axis: "xyz", distMm: 30 },
+          { name: "Lineal 200mm M (260-265)", ids: [260, 261, 262, 263, 264, 265], axis: "xyz", distMm: 30 }
+        ]
+      };
+      window.__rulerLut = fallback;
+      var proto = (location && location.protocol) || '';
+      if (proto === 'http:' || proto === 'https:') {
+        fetch('ruler-lut.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+          if (d && d.rulers) { window.__rulerLut = d; console.log('[ruler] ruler-lut.json geladen,', d.rulers.length, 'Lineale'); }
+        }).catch(function (e) { console.warn('[ruler] fetch fehlgeschlagen, Fallback:', e.message || e); });
+      } else { console.log('[ruler] file:// – Fallback aktiv (kein fetch moeglich)'); }
+    })();
+  </script>
+  <script>
+    (function () {
+      var E = window.DebugPoseEngine;
+      var imgToGray = E ? E.imageDataToGray : function (d, b) { for (var i = 0, j = 0; i < d.data.length; i += 4, j++) b[j] = (d.data[i] + d.data[i+1] + d.data[i+2]) / 3; return b; };
+      var rotToEuler = E ? E.rotToEulerDeg : function () { return null; };
+      var eulerToMat3 = E ? E.eulerToMat3 : function () { return [1,0,0,0,1,0,0,0,1]; };
+      var computeStd = E ? E.computeStd : function () { return NaN; };
+      var norm90 = E ? E.norm90 : function (v) { return v; };
+      var norm180 = E ? E.norm180 : function (v) { return v; };
+      var video = document.getElementById('video');
+      var overlay = document.getElementById('overlay');
+      var canvas = document.getElementById('canvas');
+      var plotT = document.getElementById('plotT');
+      var plotR = document.getElementById('plotR');
+      var plotHist = document.getElementById('plotHist');
+      var valTx = document.getElementById('valTx');
+      var valTy = document.getElementById('valTy');
+      var valTz = document.getElementById('valTz');
+      var valRx = document.getElementById('valRx');
+      var valRy = document.getElementById('valRy');
+      var valRz = document.getElementById('valRz');
+      var valSigTx = document.getElementById('valSigTx');
+      var valSigTy = document.getElementById('valSigTy');
+      var valSigTz = document.getElementById('valSigTz');
+      var valSigRx = document.getElementById('valSigRx');
+      var valSigRy = document.getElementById('valSigRy');
+      var valSigRz = document.getElementById('valSigRz');
+      var valDist12 = document.getElementById('valDist12');
+      var valDist12xy = document.getElementById('valDist12xy');
+      var markerInfo = document.getElementById('markerInfo');
+      var btnStart = document.getElementById('btnStart');
+      var btnStop = document.getElementById('btnStop');
+      var mirrorForDetection = document.getElementById('mirrorForDetection');
+      var smoothWindowInput = document.getElementById('smoothWindow');
+      var rFilterFcInput = document.getElementById('rFilterFc');
+      var stdWindowInput = document.getElementById('stdWindow');
+      var m1IdInput = document.getElementById('m1Id');
+      var m2IdInput = document.getElementById('m2Id');
+      var axisModeSelect = document.getElementById('axisMode');
+      var rulerPresetSelect = document.getElementById('rulerPreset');
+      var realDist12Input = document.getElementById('realDist12');
+      var btnCalibDist = document.getElementById('btnCalibDist');
+      var valScaleFactor = document.getElementById('valScaleFactor');
+      var fadeoutInput = document.getElementById('fadeoutMs');
+      var calibratedScaleFactor = null;
+      var sessionRulerScaleFactor = null;
+      var sessionRulerScaleSmooth = null;
+      var rulerScaleHistory = [];
+      var RULER_SCALE_HISTORY_MAX = 120;
+      var SCALE_SMOOTH_ALPHA = 0.15;
+      var scaleSparklineEl = document.getElementById('scaleSparkline');
+      var kMatrixInfo = document.getElementById('kMatrixInfo');
+      var nMarkersInput = document.getElementById('nMarkers');
+
+      var stream = null;
+      var detector = null;
+      var aprilTagReady = null;
+      var aprilTagGrayBuffer = null;
+      var aprilTagGrayPixels = 0;
+      var animationId = null;
+
+      var HISTORY_MAX = 600;
+      var HISTORY_SEC = 10;
+      var rulerLut = null;
+      var historyByMarker = {};
+      var overlayHistoryByMarker = {};
+      var quatStateByMarker = {};
+      var lastTickTime = null;
+      var lastSelectedId = null;
+      var lastDist12 = null;
+      var lastDist12xy = null;
+      var lastDistForScale = null;
+      var markerPoses = {};
+
+      function getCameraK(w, h) {
+        try {
+          var stored = localStorage.getItem('kiss3d_calibrated_K');
+          if (stored) {
+            var c = JSON.parse(stored);
+            var byRes = (c && c.byRes) ? c.byRes : null;
+            if (!byRes && c && c.fx != null && c.w > 0 && c.h > 0) {
+              var k = c.w + 'x' + c.h;
+              byRes = {}; byRes[k] = { fx: c.fx, fy: c.fy, cx: c.cx, cy: c.cy };
+            }
+            if (byRes) {
+              var key = w + 'x' + h;
+              if (byRes[key]) {
+                return { K: byRes[key], calibrated: true, storedRes: key.replace('x', '×'), scaled: false };
+              }
+            }
+          }
+        } catch (e) {}
+        return { K: (window.KISS3DPose && KISS3DPose.defaultCamera) ? KISS3DPose.defaultCamera(w, h) : null, calibrated: false, storedRes: null, scaled: false };
+      }
+
+      function setStatus(msg, isError) {
+        var s = document.getElementById('status');
+        if (s) { s.textContent = msg; s.className = isError ? 'status error' : 'status'; }
+      }
+
+      function hasCameraSupport() {
+        return typeof navigator !== 'undefined' && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function';
+      }
+
+      function setAprilTagReady() {
+        if (aprilTagReady) return aprilTagReady;
+        var resolveReady;
+        aprilTagReady = new Promise(function (resolve) { resolveReady = resolve; });
+        var base = 'https://arenaxr.github.io/apriltag-js-standalone/';
+        window.AprilTagWasmModule = { locateFile: function (path) { return base + path; } };
+        var script = document.createElement('script');
+        script.src = base + 'apriltag_wasm.js';
+        script.onload = function () {
+          var getPromise = function () {
+            var w = window.AprilTagWasm;
+            if (typeof w === 'function') return w(window.AprilTagWasmModule);
+            if (w && typeof w.then === 'function') return w;
+            return null;
+          };
+          var promise = getPromise();
+          if (!promise) {
+            setTimeout(function () {
+              var p = getPromise();
+              if (p) p.then(onModule).catch(onErr); else resolveReady(null);
+            }, 100);
+            return;
+          }
+          promise.then(onModule).catch(onErr);
+          function onModule(Module) {
+            try {
+              var _init = Module.cwrap('atagjs_init', 'number', []);
+              var _set_opts = Module.cwrap('atagjs_set_detector_options', 'number', ['number', 'number', 'number', 'number', 'number', 'number', 'number']);
+              var _set_img = Module.cwrap('atagjs_set_img_buffer', 'number', ['number', 'number', 'number']);
+              var _detect = Module.cwrap('atagjs_detect', 'number', []);
+              _init();
+              _set_opts(2.0, 0, 1, 1, 0, 0, 0);
+              detector = {
+                detect: function (grayscale, w, h) {
+                  var buf = _set_img(w, h, w);
+                  Module.HEAPU8.set(grayscale, buf);
+                  var ptr = _detect();
+                  var len = Module.getValue(ptr, 'i32');
+                  if (len === 0) return [];
+                  var strPtr = Module.getValue(ptr + 4, 'i32');
+                  var view = new Uint8Array(Module.HEAP8.buffer, strPtr, len);
+                  var str = '';
+                  for (var i = 0; i < len; i++) str += String.fromCharCode(view[i]);
+                  return JSON.parse(str);
+                }
+              };
+              resolveReady(detector);
+            } catch (e) { resolveReady(null); }
+          }
+          function onErr(err) { resolveReady(null); }
+        };
+        script.onerror = function () { resolveReady(null); };
+        document.head.appendChild(script);
+        return aprilTagReady;
+      }
+
+      function drawPlot(canvas, data, keys, colors, keyRanges) {
+        if (!canvas || !canvas.parentElement) return;
+        var cw = canvas.parentElement.clientWidth || 400;
+        var ch = 120;
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
+        }
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0f0f12';
+        ctx.fillRect(0, 0, cw, ch);
+        if (data.length < 2) return;
+        var now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        var tEnd = now;
+        var tStart = Math.max(0, tEnd - HISTORY_SEC * 1000);
+        var span = (tEnd - tStart) / 1000;
+        if (span <= 0) return;
+        var pad = 4;
+        var gx = pad;
+        var gy = pad;
+        var gw = cw - 2 * pad;
+        var gh = ch - 2 * pad;
+        var kk = keys || (data[0] ? Object.keys(data[0]).filter(function (k) { return k !== 't'; }) : []);
+        var rangeResult = E && E.computePlotRange ? E.computePlotRange(data, kk, tStart, tEnd, keyRanges) : { min: 0, max: 1, range: 1 };
+        var plotData = E && E.preparePlotSeries ? E.preparePlotSeries(data, kk, tStart, span, rangeResult) : { series: {}, min: 0, max: 1, range: 1 };
+        for (var ki = 0; ki < kk.length; ki++) {
+          var key = kk[ki];
+          var pts = plotData.series && plotData.series[key];
+          if (!pts || pts.length < 2) continue;
+          ctx.strokeStyle = colors && colors[key] ? colors[key] : '#00d4aa';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(gx + pts[0].x * gw, gy + pts[0].y * gh);
+          for (var j = 1; j < pts.length; j++) ctx.lineTo(gx + pts[j].x * gw, gy + pts[j].y * gh);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#666';
+        ctx.font = '10px monospace';
+        ctx.fillText(String(Math.round((plotData.max || 1) - (plotData.range || 1) * 0.1)), 6, 14);
+        ctx.fillText(String(Math.round((plotData.min || 0) + (plotData.range || 1) * 0.1)), 6, ch - 6);
+      }
+
+      function drawHistogram(canvas, histData, keys, colors, keyRanges) {
+        if (!canvas || !canvas.parentElement || !histData || !histData.length) return;
+        var cw = canvas.parentElement.clientWidth || 200;
+        var ch = 220;
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
+        }
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0f0f12';
+        ctx.fillRect(0, 0, cw, ch);
+        var n = keys.length;
+        var labelW = 28;
+        var plotW = cw - labelW - 4;
+        var bh = Math.floor(ch / n) - 2;
+        var pad = 2;
+        var bins = 20;
+        for (var ki = 0; ki < n; ki++) {
+          var key = keys[ki];
+          var vals = [];
+          for (var i = 0; i < histData.length; i++) {
+            var v = histData[i][key];
+            if (typeof v === 'number' && !isNaN(v)) vals.push(v);
+          }
+          if (vals.length < 2) continue;
+          var range = keyRanges && keyRanges[key];
+          var vMin = range ? range[0] : Math.min.apply(null, vals);
+          var vMax = range ? range[1] : Math.max.apply(null, vals);
+          var res = E && E.computeHistogramBins ? E.computeHistogramBins(vals, bins, vMin, vMax) : null;
+          if (!res) continue;
+          var y0 = ki * (bh + pad);
+          var bw = plotW / bins;
+          ctx.fillStyle = colors && colors[key] ? colors[key] : '#00d4aa';
+          for (var b = 0; b < bins; b++) {
+            var h = (res.counts[b] / res.maxCount) * (bh - 2);
+            ctx.fillRect(labelW + 2 + b * bw, y0 + bh - h, Math.max(1, bw - 1), h);
+          }
+          ctx.fillStyle = '#666';
+          ctx.font = '9px monospace';
+          ctx.fillText(key, 2, y0 + bh / 2 + 4);
+        }
+      }
+
+      function drawOverlay(markers, overlayPoses, selectedId, K) {
+        var w = overlay.width;
+        var h = overlay.height;
+        var ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+        var cx = w / 2, cy = h / 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - 12, cy);
+        ctx.lineTo(cx + 12, cy);
+        ctx.moveTo(cx, cy - 12);
+        ctx.lineTo(cx, cy + 12);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        var d = 100;
+        ctx.beginPath();
+        ctx.moveTo(0, cy - d);
+        ctx.lineTo(w, cy - d);
+        ctx.moveTo(0, cy + d);
+        ctx.lineTo(w, cy + d);
+        ctx.moveTo(cx - d, 0);
+        ctx.lineTo(cx - d, h);
+        ctx.moveTo(cx + d, 0);
+        ctx.lineTo(cx + d, h);
+        ctx.stroke();
+        if (K && E && E.getAxisSegments) {
+          var getTagSize = (window.KISS3D && window.KISS3D.getTagSizeMm) ? window.KISS3D.getTagSizeMm : function () { return 12; };
+          var segs = E.getAxisSegments(overlayPoses, K, getTagSize);
+          for (var si = 0; si < segs.length; si++) {
+            var s = segs[si];
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(s.p0.u, s.p0.v);
+            ctx.lineTo(s.p1.u, s.p1.v);
+            ctx.stroke();
+          }
+        }
+        var rulerLut = window.__rulerLut;
+        if (K && rulerLut && rulerLut.rulers && overlayPoses && E && E.projectPoint) {
+          ctx.strokeStyle = 'rgba(0, 212, 170, 0.7)';
+          ctx.lineWidth = 3;
+          for (var ri = 0; ri < rulerLut.rulers.length; ri++) {
+            var r = rulerLut.rulers[ri];
+            if (!r.ids || r.ids.length < 2) continue;
+            for (var pi = 0; pi < r.ids.length - 1; pi++) {
+              var pa = overlayPoses[String(r.ids[pi])];
+              var pb = overlayPoses[String(r.ids[pi + 1])];
+              if (!pa || !pa.t || !pb || !pb.t) continue;
+              var p2a = E.projectPoint(pa.t, K);
+              var p2b = E.projectPoint(pb.t, K);
+              if (!p2a || !p2b) continue;
+              ctx.beginPath();
+              ctx.moveTo(p2a.u, p2a.v);
+              ctx.lineTo(p2b.u, p2b.v);
+              ctx.stroke();
+            }
+          }
+        }
+        if (!markers || markers.length === 0) return;
+        ctx.lineWidth = 2;
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (var i = 0; i < markers.length; i++) {
+          var m = markers[i];
+          var c = m.corners;
+          if (!c || c.length < 4) continue;
+          var isSelected = String(m.id) === String(selectedId);
+          ctx.strokeStyle = isSelected ? '#ff00ff' : '#00d4aa';
+          ctx.lineWidth = isSelected ? 1 : 1;
+          ctx.beginPath();
+          ctx.moveTo(c[0].x, c[0].y);
+          for (var j = 1; j < c.length; j++) ctx.lineTo(c[j].x, c[j].y);
+          ctx.closePath();
+          ctx.stroke();
+          var labelX = (c[0].x + c[1].x + c[2].x + c[3].x) / 4;
+          var labelY = (c[0].y + c[1].y + c[2].y + c[3].y) / 4;
+          ctx.fillStyle = isSelected ? '#ff00ff' : '#00d4aa';
+          ctx.fillText(String(m.id), labelX, labelY);
+        }
+        ctx.lineWidth = 2;
+      }
+
+      function tick() {
+        animationId = requestAnimationFrame(tick);
+        if (!stream || !detector || video.readyState < 2) return;
+        var w = video.videoWidth;
+        var h = video.videoHeight;
+        if (w === 0 || h === 0) return;
+        var camK = getCameraK(w, h);
+        var K = camK.K;
+        var hasCalibratedK = camK.calibrated;
+        if (kMatrixInfo && K) {
+          var suffix = hasCalibratedK ? ' [calibrated' + (camK.scaled ? ' from ' + camK.storedRes + ' scaled' : '') + ']' : '';
+          kMatrixInfo.textContent = 'fx=' + Math.round(K.fx) + ' fy=' + Math.round(K.fy) + ' cx=' + Math.round(K.cx) + ' cy=' + Math.round(K.cy) + suffix + ' (Bild ' + w + '×' + h + ')';
+        }
+        canvas.width = w;
+        canvas.height = h;
+        overlay.width = w;
+        overlay.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, w, h);
+        var imageData = ctx.getImageData(0, 0, w, h);
+        var n = w * h;
+        if (!aprilTagGrayBuffer || aprilTagGrayPixels !== n) {
+          aprilTagGrayBuffer = new Uint8Array(n);
+          aprilTagGrayPixels = n;
+        }
+        imgToGray(imageData, aprilTagGrayBuffer);
+        var markers = detector.detect(aprilTagGrayBuffer, w, h);
+        var mirrorDisplay = mirrorForDetection && mirrorForDetection.checked;
+        video.style.transform = mirrorDisplay ? 'scaleX(-1)' : '';
+        overlay.style.transform = mirrorDisplay ? 'scaleX(-1)' : '';
+        var now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        if (markers && markers.length > 0 && K) {
+          for (var mi = 0; mi < markers.length; mi++) {
+            var m = markers[mi];
+            var tagMm = window.KISS3D && KISS3D.getTagSizeMm ? KISS3D.getTagSizeMm(m.id) : 12;
+            if (tagMm == null) tagMm = 12;
+            var pose = KISS3DPose.poseFromCorners(m.corners, tagMm, K);
+            if (pose && pose.t && pose.R) {
+              var euler = rotToEuler(pose.R);
+              markerPoses[m.id] = { t: pose.t, R: pose.R, euler: euler, lastSeen: now };
+            }
+          }
+        }
+        var fadeoutMs = (fadeoutInput && parseInt(fadeoutInput.value, 10)) || 1000;
+        for (var mid in markerPoses) {
+          if (now - markerPoses[mid].lastSeen > fadeoutMs) delete markerPoses[mid];
+        }
+        var poseIds = Object.keys(markerPoses).sort(function (a, b) { return Number(a) - Number(b); });
+        var nSel = (nMarkersInput && parseInt(nMarkersInput.value, 10)) || 1;
+        var selIdx = Math.min(Math.max(0, nSel - 1), poseIds.length - 1);
+        var selectedId = poseIds.length > 0 ? poseIds[selIdx] : null;
+        if (selectedId !== lastSelectedId) lastSelectedId = selectedId;
+        var calibRes = (E && E.getCalibDistance) ? E.getCalibDistance(markerPoses,
+          (m1IdInput ? parseInt(m1IdInput.value, 10) : NaN),
+          (m2IdInput ? parseInt(m2IdInput.value, 10) : NaN),
+          (axisModeSelect && axisModeSelect.value) || 'xyz',
+          poseIds) : { dist12: null, dist12xy: null, distForScale: null };
+        var dist12 = calibRes.dist12;
+        var dist12xy = calibRes.dist12xy;
+        var distForScale = calibRes.distForScale != null ? calibRes.distForScale : calibRes.dist12xy;
+        if (dist12 != null) lastDist12 = dist12;
+        if (dist12xy != null) lastDist12xy = dist12xy;
+        if (distForScale != null) lastDistForScale = distForScale;
+        var rulerLut = window.__rulerLut || null;
+        var autoScaleResult = null;
+        var effectiveRulerScale = null;
+        if (!hasCalibratedK && rulerLut && E && E.getAutoScaleFromRulers) {
+          autoScaleResult = E.getAutoScaleFromRulers(markerPoses, rulerLut);
+        }
+        if (autoScaleResult && autoScaleResult.scaleFactor > 0) {
+          var raw = autoScaleResult.scaleFactor;
+          sessionRulerScaleSmooth = (sessionRulerScaleSmooth != null)
+            ? SCALE_SMOOTH_ALPHA * raw + (1 - SCALE_SMOOTH_ALPHA) * sessionRulerScaleSmooth
+            : raw;
+          sessionRulerScaleFactor = sessionRulerScaleSmooth;
+          effectiveRulerScale = sessionRulerScaleSmooth;
+          rulerScaleHistory.push(sessionRulerScaleSmooth);
+          while (rulerScaleHistory.length > RULER_SCALE_HISTORY_MAX) rulerScaleHistory.shift();
+        } else if (sessionRulerScaleFactor != null) {
+          effectiveRulerScale = sessionRulerScaleFactor;
+        }
+        for (var mid in markerPoses) {
+          var pp = markerPoses[mid];
+          if (!pp || !pp.t || pp.t.length < 3 || !pp.euler) continue;
+          var pose = { t: pp.t, R: pp.R, euler: pp.euler };
+          var rec = (E && E.buildHistoryRecord) ? E.buildHistoryRecord(pose, pose.euler) : { tx: pose.t[0], ty: pose.t[1], tz: pose.t[2], rx: 0, ry: 0, rz: 0 };
+          rec.t = now;
+          if (!historyByMarker[mid]) historyByMarker[mid] = [];
+          historyByMarker[mid].push(rec);
+          while (historyByMarker[mid].length > HISTORY_MAX) historyByMarker[mid].shift();
+        }
+        for (var mid in historyByMarker) { if (!markerPoses[mid]) delete historyByMarker[mid]; }
+        var winSizeOverlay = (smoothWindowInput && parseInt(smoothWindowInput.value, 10)) || 0;
+        var rFc = (rFilterFcInput && parseFloat(rFilterFcInput.value)) || 0;
+        var dt = lastTickTime != null ? (now - lastTickTime) / 1000 : 1 / 30;
+        lastTickTime = now;
+        var opts = (rFc > 0 && dt > 0)
+          ? { quatStateByMarker: quatStateByMarker, dt: dt, fc: rFc }
+          : undefined;
+        var overlayPoses = (E && E.buildOverlayPoses) ? E.buildOverlayPoses(historyByMarker, markerPoses, winSizeOverlay, opts) : markerPoses;
+        for (var oid in overlayPoses) {
+          var op = overlayPoses[oid];
+          if (op && op.R && op.R.length >= 9 && E && E.rotToEulerDeg) {
+            var eul = E.rotToEulerDeg(op.R);
+            if (eul) {
+              if (!overlayHistoryByMarker[oid]) overlayHistoryByMarker[oid] = [];
+              overlayHistoryByMarker[oid].push({ t: now, rx: eul.rx, ry: eul.ry, rz: eul.rz });
+              while (overlayHistoryByMarker[oid].length > HISTORY_MAX) overlayHistoryByMarker[oid].shift();
+            }
+          }
+        }
+        for (var oid in overlayHistoryByMarker) { if (!markerPoses[oid]) delete overlayHistoryByMarker[oid]; }
+        drawOverlay(markers, overlayPoses, selectedId, K);
+        if (selectedId && markerPoses[selectedId]) {
+          var pp = markerPoses[selectedId];
+          var pose = { t: pp.t, R: pp.R, euler: pp.euler };
+          if (pose.t && pose.t.length >= 3 && pose.euler) {
+            var history = historyByMarker[selectedId] || [];
+            var winSize = (smoothWindowInput && parseInt(smoothWindowInput.value, 10)) || 0;
+            var scaleFactor = (calibratedScaleFactor != null) ? calibratedScaleFactor
+              : (hasCalibratedK ? 1
+                : (effectiveRulerScale != null ? effectiveRulerScale
+                  : ((realDist12Input && distForScale != null && distForScale > 0) ? (E && E.getScaleFactor ? E.getScaleFactor(distForScale, parseFloat(realDist12Input.value) || parseFloat(realDist12Input.placeholder) || 0) : 1) : 1)));
+            var setVal = function (el, v, color) {
+              if (!el) return;
+              el.textContent = (typeof v === 'number' && !isNaN(v)) ? String(Math.round(v)) : '—';
+              el.style.color = color || '';
+            };
+            var avgT = (winSize > 0 && history.length >= 1 && E && E.slidingWindowAvg) ? E.slidingWindowAvg(history, ['tx','ty','tz'], history.length - 1, winSize) : null;
+            var rFromOverlay = (rFc > 0 && overlayPoses[selectedId] && overlayPoses[selectedId].R && E && E.rotToEulerDeg) ? E.rotToEulerDeg(overlayPoses[selectedId].R) : null;
+            var avgR = (rFc <= 0 && winSize > 0 && history.length >= 1 && E && E.slidingWindowAvg) ? E.slidingWindowAvg(history, ['rx','ry','rz'], history.length - 1, winSize) : null;
+            var lastRec = history.length ? history[history.length - 1] : null;
+            var txc = (avgT ? avgT.tx : pose.t[0]) * scaleFactor;
+            var tyc = (avgT ? avgT.ty : pose.t[1]) * scaleFactor;
+            var tzc = (avgT ? avgT.tz : pose.t[2]) * scaleFactor;
+            setVal(valTx, txc, '#e05050');
+            setVal(valTy, tyc, '#50e050');
+            setVal(valTz, tzc, '#5050e0');
+            var rxVal = rFromOverlay ? rFromOverlay.rx : (avgR ? avgR.rx : (lastRec ? lastRec.rx : 0));
+            var ryVal = rFromOverlay ? rFromOverlay.ry : (avgR ? avgR.ry : (lastRec ? lastRec.ry : 0));
+            var rzVal = rFromOverlay ? rFromOverlay.rz : (avgR ? avgR.rz : (lastRec ? lastRec.rz : 0));
+            setVal(valRx, norm90(rxVal), '#e05050');
+            setVal(valRy, norm90(ryVal), '#50e050');
+            setVal(valRz, norm180(rzVal), '#5050e0');
+            markerInfo.textContent = 'Marker ' + selectedId + (winSize > 0 ? ' [Window=' + winSize + ']' : '') + (rFc > 0 ? ' [R fc=' + rFc + ']' : '') + ':';
+          }
+        }
+        if (valScaleFactor) {
+          var sf = (calibratedScaleFactor != null) ? calibratedScaleFactor
+            : (hasCalibratedK ? 1
+              : (effectiveRulerScale != null ? effectiveRulerScale
+                : ((lastDistForScale != null && lastDistForScale > 0 && realDist12Input) ? (E && E.getScaleFactor ? E.getScaleFactor(lastDistForScale, parseFloat(realDist12Input.value) || parseFloat(realDist12Input.placeholder) || 0) : null) : null)));
+          var sfLabel = (sf != null) ? sf.toFixed(2) : '—';
+          if (sf != null) sfLabel += (calibratedScaleFactor != null ? ' (M1/M2)' : (hasCalibratedK ? ' (K calibrated)' : (autoScaleResult ? ' (Ruler)' : (sessionRulerScaleFactor != null ? ' (Session)' : ''))));
+          valScaleFactor.textContent = sfLabel;
+        }
+        if (scaleSparklineEl) {
+          var ctx = scaleSparklineEl.getContext('2d');
+          var w = scaleSparklineEl.width, h = scaleSparklineEl.height;
+          ctx.clearRect(0, 0, w, h);
+          if (rulerScaleHistory.length >= 2) {
+            var arr = rulerScaleHistory;
+            var min = Math.min.apply(null, arr), max = Math.max.apply(null, arr);
+            var range = Math.max(max - min, 0.01);
+            ctx.strokeStyle = 'rgba(0, 212, 170, 0.8)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (var i = 0; i < arr.length; i++) {
+              var x = (i / (arr.length - 1)) * (w - 2) + 1;
+              var y = h - 2 - ((arr[i] - min) / range) * (h - 4);
+              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          }
+        }
+        if (!selectedId) {
+          var clearVal = function (el) { if (el) { el.textContent = '—'; el.style.color = ''; } };
+          clearVal(valTx); clearVal(valTy); clearVal(valTz);
+          clearVal(valRx); clearVal(valRy); clearVal(valRz);
+          clearVal(valSigTx); clearVal(valSigTy); clearVal(valSigTz);
+          clearVal(valSigRx); clearVal(valSigRy); clearVal(valSigRz);
+          clearVal(valDist12xy); clearVal(valDist12);
+          markerInfo.textContent = 'No marker visible';
+        } else if (selectedId) {
+          var history = historyByMarker[selectedId] || [];
+          var rHistory = (rFc > 0 && overlayHistoryByMarker[selectedId]) ? overlayHistoryByMarker[selectedId] : history;
+          if (history.length >= 2) {
+          var nWin = (stdWindowInput && parseInt(stdWindowInput.value, 10)) || 20;
+          var sigTx = computeStd(history, 'tx', nWin);
+          var sigTy = computeStd(history, 'ty', nWin);
+          var sigTz = computeStd(history, 'tz', nWin);
+          var sigRx = computeStd(rHistory, 'rx', nWin);
+          var sigRy = computeStd(rHistory, 'ry', nWin);
+          var sigRz = computeStd(rHistory, 'rz', nWin);
+          var plotScale = (calibratedScaleFactor != null) ? calibratedScaleFactor : (hasCalibratedK ? 1 : (effectiveRulerScale != null ? effectiveRulerScale : ((E && E.getScaleFactor) ? E.getScaleFactor(lastDistForScale || lastDist12xy, realDist12Input ? (parseFloat(realDist12Input.value) || parseFloat(realDist12Input.placeholder) || 0) : 0) : 1)));
+          var fmt = function (v) { return isNaN(v) ? '—' : String(Math.round(v)); };
+          var setSig = function (el, v, c) { if (el) { el.textContent = fmt(v); el.style.color = c || ''; } };
+          setSig(valSigTx, sigTx * plotScale, '#e05050');
+          setSig(valSigTy, sigTy * plotScale, '#50e050');
+          setSig(valSigTz, sigTz * plotScale, '#5050e0');
+          setSig(valSigRx, sigRx, '#e05050');
+          setSig(valSigRy, sigRy, '#50e050');
+          setSig(valSigRz, sigRz, '#5050e0');
+          }
+        }
+        var history = selectedId ? (historyByMarker[selectedId] || []) : [];
+        if (valDist12xy) valDist12xy.textContent = (dist12xy != null) ? String(Math.round(dist12xy)) : (lastDist12xy != null ? String(Math.round(lastDist12xy)) : '—');
+        if (valDist12) valDist12.textContent = (dist12 != null) ? String(Math.round(dist12)) : (lastDist12 != null ? String(Math.round(lastDist12)) : '—');
+        if (!selectedId) { lastDist12 = null; lastDist12xy = null; lastDistForScale = null; }
+        var plotScaleFactor = (calibratedScaleFactor != null) ? calibratedScaleFactor
+          : (hasCalibratedK ? 1
+            : (effectiveRulerScale != null ? effectiveRulerScale
+              : ((lastDistForScale != null && lastDistForScale > 0 && realDist12Input) ? (E && E.getScaleFactor ? E.getScaleFactor(lastDistForScale, parseFloat(realDist12Input.value) || parseFloat(realDist12Input.placeholder) || 0) : 1) : 1)));
+        var winSize = (smoothWindowInput && parseInt(smoothWindowInput.value, 10)) || 0;
+        var historyR = (rFc > 0 && overlayHistoryByMarker[selectedId]) ? overlayHistoryByMarker[selectedId] : history;
+        var winSizeR = (rFc > 0) ? 0 : winSize;
+        var dataT = (E && E.scaleHistoryT) ? E.scaleHistoryT(history, plotScaleFactor, 1, winSize) : [];
+        var dataR = (E && E.prepareHistoryR) ? E.prepareHistoryR(historyR, winSizeR) : [];
+        drawPlot(plotT, dataT, ['tx', 'ty', 'tz'], { tx: '#e07040', ty: '#00d4aa', tz: '#8888ff' });
+        var plotRRanges = { rx: [-90, 90], ry: [-90, 90], rz: [-180, 180] };
+        drawPlot(plotR, dataR, ['rx', 'ry', 'rz'], { rx: '#e07040', ry: '#00d4aa', rz: '#8888ff' }, plotRRanges);
+        var histData = (E && E.prepareHistData) ? E.prepareHistData(history, plotScaleFactor, 1, winSize, historyR, winSizeR) : [];
+        var histColors = { tx: '#e07040', ty: '#00d4aa', tz: '#8888ff', rx: '#e07040', ry: '#00d4aa', rz: '#8888ff' };
+        var histRanges = { rx: [-90, 90], ry: [-90, 90], rz: [-180, 180] };
+        drawHistogram(plotHist, histData, ['tx', 'ty', 'tz', 'rx', 'ry', 'rz'], histColors, histRanges);
+      }
+
+      btnStart.addEventListener('click', function () {
+        if (!hasCameraSupport()) {
+          document.getElementById('secureWarning').style.display = 'block';
+          setStatus('Camera API not available. Use HTTPS or localhost.', true);
+          return;
+        }
+        document.getElementById('secureWarning').style.display = 'none';
+        setStatus('AprilTag WASM laden…');
+        setAprilTagReady().then(function (d) {
+          if (!d) {
+            setStatus('AprilTag fehlgeschlagen.', true);
+            return;
+          }
+          setStatus('Requesting camera…');
+          var resSel = document.getElementById('resolutionSelect');
+          var res = resSel ? resSel.value : '640';
+          var width = 640, height = 480;
+          if (res === '720') { width = 1280; height = 720; } else if (res === '1080') { width = 1920; height = 1080; }
+          navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: width }, height: { ideal: height } },
+            audio: false
+          }).then(function (s) {
+            stream = s;
+            video.srcObject = stream;
+            historyByMarker = {};
+            overlayHistoryByMarker = {};
+            markerPoses = {};
+            quatStateByMarker = {};
+            lastTickTime = null;
+            calibratedScaleFactor = null;
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+            setStatus('Camera on. Show AprilTag (36h11) – Marker # selects which one is shown.');
+            tick();
+          }).catch(function (err) {
+            setStatus('Camera error: ' + (err.message || err.name), true);
+          });
+        });
+      });
+
+      btnStop.addEventListener('click', function () {
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+          animationId = null;
+        }
+        if (stream) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          stream = null;
+        }
+        video.srcObject = null;
+        detector = null;
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        setStatus('Camera stopped.');
+      });
+
+      if (rulerPresetSelect) {
+        rulerPresetSelect.addEventListener('change', function () {
+          var v = rulerPresetSelect.value;
+          if (v === '260-265') {
+            if (m1IdInput) m1IdInput.value = '260';
+            if (m2IdInput) m2IdInput.value = '265';
+            if (realDist12Input) realDist12Input.value = '150';
+            if (axisModeSelect) axisModeSelect.value = 'x';
+          }
+        });
+      }
+
+      if (btnCalibDist) {
+        btnCalibDist.addEventListener('click', function () {
+          var realDist = realDist12Input ? (parseFloat(realDist12Input.value) || parseFloat(realDist12Input.placeholder) || 0) : 0;
+          if (!isFinite(realDist) || realDist <= 0) {
+            setStatus('Real-Abstand eintragen (z.B. 150 mm).');
+            return;
+          }
+          if (lastDistForScale == null || lastDistForScale <= 0) {
+            setStatus('Place M1 and M2 in view, then calibrate distance.');
+            return;
+          }
+          calibratedScaleFactor = (E && E.getScaleFactor) ? E.getScaleFactor(lastDistForScale, realDist) : (realDist / lastDistForScale);
+          sessionRulerScaleFactor = null;
+          sessionRulerScaleSmooth = null;
+          rulerScaleHistory = [];
+          setStatus('Distance calibrated: ' + realDist + ' mm / ' + lastDistForScale.toFixed(1) + ' (' + (axisModeSelect && axisModeSelect.value === 'xyz' ? '3D' : 'xy') + ') => factor ' + calibratedScaleFactor.toFixed(2));
+        });
+      }
+    })();
+  </script>
+
+  <footer class="meta">
+    <p class="footer-by"><a href="https://mess.engineering" target="_blank" rel="noopener" title="Mattern Engineering &amp; Software Solutions">M.E.S.S.</a></p>
+  </footer>
+</body>
+</html>
