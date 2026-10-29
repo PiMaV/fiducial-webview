@@ -20,6 +20,8 @@ Wir nutzen die AprilTag-Familie **36h11** (IDs 0–586). Da der Zahlenraum begre
 * `00` bis `49`: **Loose (Lose):** Einzelne Plättchen, keine Relation zueinander, beliebige Platzierung.
 * `50` bis `99`: **Fixed (Starr):** Teil eines fixen Werkzeugs (Lineal, Winkel, Rahmen), Software kennt relative Abstände.
 
+Die Teilung lose/starr gilt für 100–399. Ab 400 sind beide Hälften lose Platten in zwei Größen. Ein Lineal aus so großen Platten ist kein sinnvoller Druck.
+
 
 #### Der Master Lookup Table
 
@@ -29,22 +31,28 @@ Wir nutzen die AprilTag-Familie **36h11** (IDs 0–586). Da der Zahlenraum begre
 
 | ID-Bereich | Klasse | Breite | Höhe | Tag-Größe | Anwendungszweck |
 | --- | --- | --- | --- | --- | --- |
-| **100 - 149** | **S / Lose** | **15 mm** | **9 mm** | 6 mm | Finger, Zehen, Makro-Aufnahmen |
-| **150 - 199** | **S / Fixed** | **15 mm** | **9 mm** | 6 mm | Mikro-Sonden, Zahnmedizin |
+| **100 - 149** | **S / Lose** | **15 mm** | **9 mm** | 6 mm | Detail, Nahaufnahme. Kleines Teil; medical auch Finger, Zehe |
+| **150 - 199** | **S / Fixed** | **15 mm** | **9 mm** | 6 mm | Feine feste Referenz. Kleines Gestell; medical auch Sonde, Zahn |
 |  |  |  |  |  |  |
-| **200 - 249** | **M / Lose** | **30 mm** | **18 mm** | **12 mm** | **Standard** (Wunden, Arm, Bein) |
-| **250 - 299** | **M / Fixed** | **30 mm** | **18 mm** | **12 mm** | Standard-Lineale, Referenzrahmen |
+| **200 - 249** | **M / Lose** | **30 mm** | **18 mm** | **12 mm** | Tisch, Standard. Gerät auf der Bank; medical auch Wunde, Arm, Bein |
+| **250 - 299** | **M / Fixed** | **30 mm** | **18 mm** | **12 mm** | Lineale, Referenzrahmen (Tisch) |
 |  |  |  |  |  |  |
-| **300 - 349** | **L / Lose** | **50 mm** | **30 mm** | 20 mm | Körperstamm, Rücken, Übersicht |
-| **350 - 399** | **L / Fixed** | **50 mm** | **30 mm** | 20 mm | Große Lineale, Bodenreferenz |
+| **300 - 349** | **L / Lose** | **50 mm** | **30 mm** | 20 mm | Tischmaß, Übersicht. Marker auf einer optischen Bank (ca. 2 m × 1 m); medical auch Körperstamm |
+| **350 - 399** | **L / Fixed** | **50 mm** | **30 mm** | 20 mm | Große Lineale, Tisch- und Bodenreferenz |
 |  |  |  |  |  |  |
-| **400 - 586** | **Special** | Variabel | Variabel | Variabel | 3D-Formkörper (Hex-Dome), Würfel |
+| **400 - 449** | **XL / Lose** | **200 mm** | **120 mm** | 80 mm | Eine Platte auf A5 (`sheet_A5_XL_200mm_id_400`), zwei auf A4 hoch (`sheet_A4_XL_200mm_ids_401-402`). Kein Lineal |
+| **450 - 499** | **XXL / Lose** | **280 mm** | **168 mm** | 112 mm | Eine Platte auf A4 quer (`sheet_A4_XXL_280mm_id_450`), 8.5 mm Rand, nicht randlos. Kein Lineal |
+| **500 - 586** | **Special** | Variabel | Variabel | Variabel | 3D-Formkörper (Hex-Dome), Würfel |
 
 **Kurzer Check der Dimensionen:**
 
-1. **Small (15 x 9 mm):** Wie ein Fingernagel. Sehr klein, aber gut für Details.
-2. **Medium (30 x 18 mm):** Etwa wie eine große Briefmarke oder ein kleiner Domino-Stein. **Perfekt handhabbar.**
-3. **Large (50 x 30 mm):** Streichholzschachtel-Format (flach). Sehr gut sichtbar aus der Distanz.
+1. **Small (15 x 9 mm):** Detailmaß. Klein wie ein Fingernagel, für Nahaufnahmen und kleine Teile.
+2. **Medium (30 x 18 mm):** Tisch-Standard. Etwa eine große Briefmarke oder ein kleiner Domino-Stein.
+3. **Large (50 x 30 mm):** Tischmaß, etwa Körpergröße: ein wackliger Tisch, eine Übersicht, ein Marker auf einer optischen Bank von etwa 2 m × 1 m. Flach wie eine Streichholzschachtel, aus etwas Abstand noch lesbar.
+4. **XL (200 x 120 mm):** dasselbe Verhältnis wie L, Kanten mal 4. Tag 80 mm. Eine Platte auf A5 (210 x 148 mm), untere Kante 200 mm, 5 mm an jedem Ende. Oben und unten bleiben je 14 mm. Zwei solche Platten passen auf A4 hoch.
+5. **XXL (280 x 168 mm):** dasselbe Verhältnis, untere Kante 280 mm, Tag 112 mm. Eine Platte auf A4 quer (297 x 210 mm), 8.5 mm links und rechts, 21 mm oben und unten. Nicht randlos.
+
+Medical ist die Hauptanwendung, keine Grenze. Die Klasse nennt die Szene. Tischmaß ist etwa Körpergröße. Raummaß ist XL und XXL. Die drei Bögen liegen im Druck-Repo, `generate_xl_xxl_sheets.py`.
 
 
 *IDs 0-99 sind als Puffer/Debug reserviert.*
