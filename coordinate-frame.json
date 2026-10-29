@@ -1,0 +1,34 @@
+{
+  "anchor": "plate_lower_left",
+  "tagMm": 20,
+  "plateMm": [50, 30],
+  "yawDeg": 0,
+  "pieces": [
+    {
+      "id": "origin-l",
+      "role": "scene-origin",
+      "angleDeg": 90,
+      "markers": [
+        {"id": 350, "role": "ORIGIN", "xMm": 0, "yMm": 0, "yawDeg": 0},
+        {"id": 351, "role": "+X", "xMm": 230, "yMm": 0, "yawDeg": 0},
+        {"id": 352, "role": "+Y", "xMm": 0, "yMm": 170, "yawDeg": 0}
+      ]
+    },
+    {
+      "id": "station-l",
+      "role": "optional-station",
+      "angleDeg": 90,
+      "sheetYawDeg": 180,
+      "markers": [
+        {"id": 353, "role": "REF", "xMm": 0, "yMm": 0, "yawDeg": 0},
+        {"id": 354, "role": "+X", "xMm": 180, "yMm": 0, "yawDeg": 0},
+        {"id": 355, "role": "+Y", "xMm": 0, "yMm": 130, "yawDeg": 0}
+      ],
+      "surveyInOriginFrame": {
+        "xMm": null,
+        "yMm": null,
+        "yawDeg": null
+      }
+    }
+  ]
+}

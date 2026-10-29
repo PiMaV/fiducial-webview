@@ -120,3 +120,18 @@ Schräge Grau-Kante am linken Plättchenrand für MTF-/Schärfe-Kalibrierung und
 | 3 | 3 | Violet | 128, 0, 128 | 3.8125 | 0.0 |
 
 `x` / `y` = untere linke Feldecke relativ zur unteren linken Tag-Ecke; Feldkante überall `0.4375 u`.
+
+---
+
+### 6. Coordinate Ls (350–355)
+
+Same 50×30 mm plate and the same local frame as every other flat marker. The measured point is the outer lower-left corner. +x runs along the ruler. +y runs up the short side. Tags on an L stay in print pose.
+
+`coordinate-frame.json` is the source for the arm lengths. Printing lives in the printing repo (`generate_coordinate_l_sheet.py`). Full rules: `docs/coordinate-plates.md` there.
+
+| IDs | Role on the sheet | Arm from the red corner |
+| --- | --- | --- |
+| 350, 351, 352 | Origin L: `ORIGIN`, `+X`, `+Y` | 230 mm, 170 mm |
+| 353, 354, 355 | Optional station: `REF`, `+X`, `+Y`. L in the top-right, opening toward 350. Tags inside read the same way up as 350. | 180 mm, 130 mm |
+
+356–399 stay available. The sheet does not print a distance from 350 to 353. That entry stays empty until it is measured. Sticker sheets still start at 300. This all-in-one sheet also prints loose plates 300–308, with no preset distance.
