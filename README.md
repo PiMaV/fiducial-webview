@@ -1,15 +1,16 @@
 # fiducial-webview
 
-Browser-based **AprilTag** and **ArUco** scanner and pattern generator — no server, no build step. Works on GitHub Pages and any static host.
+Browser-based **AprilTag** scanner and pattern generator (plus optional QR overlay) — no server, no build step. Works on GitHub Pages and any static host.
 
 **Live:** [fiducials.mess.engineering](https://fiducials.mess.engineering) · **GitHub Pages:** [pimav.github.io/fiducial-webview](https://pimav.github.io/fiducial-webview/)
 
 ## Features
 
-- **AprilTag 36h11** — 587 IDs, 8×8 layout; same codes as official 36h11 family
-- **ArUco 4×4** — DICT_4X4_1000 (built-in, byte-swapped like OpenCV)
-- **In-browser detection** — [js-aruco2](https://github.com/damianofalcioni/js-aruco2); dictionaries embedded
-- **Live camera** — Video feed with cyan overlay, optional gray/binary debug view
+- **AprilTag 36h11** — 587 IDs, 8×8 layout; same codes as official 36h11 family (main scanner mode)
+- **QR overlay** — optional parallel QR detect via [ZXing](https://github.com/zxing-js/library) (checkbox, **off by default** for FPS); reads standard and MESS artistic codes; amber boxes + payload label beside cyan AprilTag overlays
+- **ArUco 4×4** — legacy detector option (DICT_4X4_1000, byte-swapped like OpenCV)
+- **In-browser detection** — AprilTag WASM + ZXing QR; ArUco via [js-aruco2](https://github.com/damianofalcioni/js-aruco2)
+- **Live camera** — Video feed with overlays, optional gray/binary debug view
 - **Pattern generator** — Grid layout (click to fill/clear), Smiley & Logo presets, PNG download
 - **KISS-3D Tracker** — Metrische 3D-Welt aus AprilTag + Kamera (Ref = kleinste ID), State IDLE/CAPTURE/LOCKED, Abstaende in mm
 - **Debug T/R** — Einzelmarker Pose (Translation/Rotation) ueber Zeit, Massstab, Kalibrierung M1/M2
@@ -28,7 +29,7 @@ Camera requires **HTTPS or localhost** (secure context). Options:
 | File | Description |
 |------|-------------|
 | **index.html** | Landing page |
-| **scanner.html** | Camera-based scanner (AprilTag / ArUco) |
+| **scanner.html** | Camera-based scanner (AprilTag + optional QR; ArUco legacy) |
 | **generator.html** | Pattern generator (grid, presets, PNG export) |
 | **tracker3d.html** | KISS-3D Tracker (world model, Ref = smallest ID, live 3D view) |
 | **debug-pose.html** | Debug T/R (single-marker pose over time, scale, M1/M2 calibration) |
@@ -51,4 +52,4 @@ Run generator: `python tests/apriltag36h11_gen.py` from repo root. Output: `test
 
 ## License
 
-**MIT** — see [LICENSE](LICENSE). Uses [js-aruco2](https://github.com/damianofalcioni/js-aruco2); ArUco dictionary: OpenCV-style; AprilTag 36h11: official family layout.
+**MIT** — see [LICENSE](LICENSE). Uses [apriltag-js-standalone](https://github.com/arenaxr/apriltag-js-standalone), [@zxing/library](https://github.com/zxing-js/library), and [js-aruco2](https://github.com/damianofalcioni/js-aruco2) (legacy ArUco). AprilTag 36h11: official family layout.

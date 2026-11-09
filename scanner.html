@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>AprilTag &amp; ArUco Web Scanner</title>
+  <title>AprilTag Web Scanner</title>
   <link rel="icon" href="https://mess.engineering/favicon/favicon.ico" type="image/x-icon">
   <link rel="apple-touch-icon" href="https://mess.engineering/favicon/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -103,8 +103,11 @@
       font-size: 0.9rem;
     }
     .secure-warning strong { color: var(--error); }
-    .markers-line { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2em; }
+    .markers-line { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); min-height: 1.2em; text-align: center; max-width: 720px; }
     .markers-line .ids { color: var(--accent); }
+    .markers-line a { color: var(--accent); text-decoration: underline; word-break: break-all; }
+    .markers-line a:hover { filter: brightness(1.15); }
+    .session-seen { margin-top: 0.25rem; }
     .credits { margin: 2.5rem auto 0 auto; padding: 0.75rem 1rem; max-width: 30rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.75rem; line-height: 1.35; text-align: left; }
     .credits h2 { font-size: 0.8rem; color: var(--accent); margin: 0 0 0.35rem 0; }
     .credits ul { margin: 0 0 0.5rem 0; padding-left: 1rem; }
@@ -112,8 +115,23 @@
     .credits a { color: var(--accent); text-decoration: none; }
     .credits a:hover { text-decoration: underline; }
     .credits .refs { margin-top: 0.5rem; }
-    .footer-by { margin-top: 0.75rem; padding-bottom: 0.5rem; font-size: 1.2rem; color: var(--muted); text-align: center; }
-    .footer-by a { font-family: "Orbitron", sans-serif; font-weight: 700; letter-spacing: 0.06em; color: var(--accent); text-decoration: none; }
+    .footer-by {
+      margin-top: 0.75rem;
+      padding-bottom: 0.5rem;
+      font-size: 1.2rem;
+      color: var(--muted);
+      text-align: center;
+      font-family: "Orbitron", sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    .footer-by a {
+      font-family: "Orbitron", sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      text-decoration: none;
+    }
     .footer-by a:hover { text-decoration: underline; }
     footer.meta { width: 100%; display: flex; flex-direction: column; align-items: center; padding-bottom: 0.75rem; }
     .source-link { display: inline-block; padding: 0.35rem 0.85rem; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.9rem; text-decoration: none; transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s; }
@@ -134,8 +152,8 @@
   </style>
 </head>
 <body>
-  <h1>AprilTag &amp; ArUco  Web Scanner</h1>
-  <p class="sub">Runs in the browser — no server. ArUco 4×4 (50/250/1000) or AprilTag 36h11 (WASM).</p>
+  <h1>AprilTag Web Scanner</h1>
+  <p class="sub">Runs in the browser — no server. AprilTag 36h11 (WASM) plus optional QR overlay. ArUco 4×4 remains as legacy.</p>
   <nav class="nav-links">
     <a href="scanner.html">Scanner</a>
     <span class="nav-sep">·</span>
@@ -151,7 +169,10 @@
   <div class="controls">
     <button id="btnStart" class="primary">Start camera</button>
     <button id="btnStop" disabled>Stop camera</button>
-    <label>Detector: <select id="detectorMode"><option value="apriltag" selected>AprilTag 36h11</option><option value="aruco">ArUco 4×4</option></select></label>
+    <label>Detector: <select id="detectorMode"><option value="apriltag" selected>AprilTag 36h11</option><option value="aruco">ArUco 4×4 (legacy)</option></select></label>
+    <label title="Also find QR codes in the same frame (ZXing). Off by default — costs FPS.">
+      <input type="checkbox" id="detectQr"> Detect QR
+    </label>
     <label title="Enable if IDs are wrong - compensates mirrored webcam.">
       <input type="checkbox" id="mirrorForDetection"> Mirror image
     </label>
@@ -184,11 +205,12 @@
     </div>
   </div>
   <p class="status" style="font-size:0.8rem; color:var(--muted); margin-top:0.5rem;">
-    Left: camera + cyan boxes (ID). Right: scanner input (gray/binary) and traces (marker paths, 1–60 s, ghost 0–1000 ms). Toggle &quot;Show input preview&quot; and &quot;Show trace&quot; as needed.
+    Left: camera + cyan AprilTag boxes (ID) and amber QR boxes (payload). Right: scanner input (gray/binary) and traces. Toggle &quot;Detect QR&quot;, &quot;Show input preview&quot;, and &quot;Show trace&quot; as needed.
   </p>
 
-  <p class="status" id="status">Load over HTTPS or localhost, then start the camera. You can switch ArUco ↔ AprilTag while the camera is on. If it gets slow after long use, refresh the page.</p>
+  <p class="status" id="status">Load over HTTPS or localhost, then start the camera. AprilTag is the main detector; QR runs in parallel when enabled. If it gets slow after long use, refresh the page.</p>
   <p class="markers-line" id="markersLine" aria-live="polite"></p>
+  <p class="markers-line session-seen" id="sessionSeenLine" aria-live="polite"></p>
 
   <footer class="meta">
     <p class="footer-by"><a href="https://mess.engineering" target="_blank" rel="noopener" title="Mattern Engineering &amp; Software Solutions">M.E.S.S.</a></p>
@@ -196,10 +218,22 @@
 
   <script src="https://cdn.jsdelivr.net/gh/damianofalcioni/js-aruco2@master/src/cv.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/damianofalcioni/js-aruco2@master/src/aruco.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
   <script>
     (function () {
       // CI colors (M.E.S.S. – mess.engineering)
-      var CI_LIVE = { r: 0, g: 255, b: 255 };   // Cyan – live camera overlay
+      var CI_LIVE = { r: 0, g: 255, b: 255 };   // Cyan – AprilTag / ArUco overlay
+      var CI_QR = { r: 255, g: 176, b: 64 };    // Amber – QR overlay
+      // ZXing handles MESS artistic QRs (dot modules / finder logos); jsQR does not.
+      var QR_MAX_SIDE = 640;     // downscale QR pass for FPS
+      var QR_FRAME_STRIDE = 2;   // run QR every Nth processed frame when enabled
+      var QR_GHOST_MS = 800;     // keep overlay after intermittent miss
+      // Finder centres → outer module edge ≈ N/(N-7); 1.55 covers V1–V2 + a little art margin
+      var QR_CORNER_EXPAND = 1.55;
+      var qrReader = null;
+      var qrFrameCounter = 0;
+      var lastQrMarkers = [];
+      var lastQrSeenAt = 0;
 
       // Built-in 4×4 dictionary codes (OpenCV DICT_4X4_1000, superset of DICT_4X4_250)
       // For DICT_4X4_250, use the first 250 entries of this array.
@@ -252,12 +286,14 @@
       var btnStop = document.getElementById('btnStop');
       var detectorMode = document.getElementById('detectorMode');
       var arucoOpts = document.getElementById('arucoOpts');
+      var detectQr = document.getElementById('detectQr');
       var mirrorForDetection = document.getElementById('mirrorForDetection');
       var dictSize = document.getElementById('dictSize');
       var dictConvention = document.getElementById('dictConvention');
       var debugMode = document.getElementById('debugMode');
       var statusEl = document.getElementById('status');
       var markersLine = document.getElementById('markersLine');
+      var sessionSeenLine = document.getElementById('sessionSeenLine');
       var secureWarning = document.getElementById('secureWarning');
       var liveRow = document.getElementById('liveRow');
       var showDebugView = document.getElementById('showDebugView');
@@ -266,6 +302,9 @@
       var traceDurationSec = document.getElementById('traceDurationSec');
       var traceGhostMs = document.getElementById('traceGhostMs');
       var lastMarkerIds = '';
+      var lastSessionSeenHtml = '';
+      var sessionSeenOrder = [];
+      var sessionSeenMap = {};
       var traceHistory = {};
 
       var stream = null;
@@ -405,8 +444,215 @@
       }
 
       function colorForTraceId(id) {
-        var hue = (Number(id) * 137) % 360;
+        var n = Number(id);
+        if (!isFinite(n)) {
+          n = 0;
+          var s = String(id);
+          for (var i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+        }
+        var hue = (n * 137) % 360;
         return 'hsla(' + hue + ', 38%, 68%, 0.85)';
+      }
+
+      function formatQrLabel(payload, maxLen) {
+        var text = String(payload == null ? '' : payload);
+        var limit = maxLen == null ? 28 : maxLen;
+        if (text.length > limit) text = text.slice(0, Math.max(0, limit - 1)) + '…';
+        return text ? ('QR: ' + text) : 'QR';
+      }
+
+      function markerLabel(m) {
+        if (m && m.kind === 'qr') return formatQrLabel(m.id);
+        return String(Number(m.id));
+      }
+
+      function isHttpUrl(s) {
+        return /^https?:\/\//i.test(String(s || ''));
+      }
+
+      function sessionKeyForMarker(m) {
+        if (m && m.kind === 'qr') return 'qr:' + String(m.id || '');
+        return 'tag:' + String(Number(m.id));
+      }
+
+      /** HTML snippet for one marker; http(s) QR payloads become links. */
+      function markerHtml(m, maxLen) {
+        if (m && m.kind === 'qr') {
+          var raw = String(m.id || '');
+          var label = formatQrLabel(raw, maxLen);
+          if (isHttpUrl(raw)) {
+            return '<a href="' + escapeHtml(raw) + '" target="_blank" rel="noopener">' + escapeHtml(label) + '</a>';
+          }
+          return escapeHtml(label);
+        }
+        return escapeHtml(String(Number(m.id)));
+      }
+
+      function rememberSessionMarkers(markers) {
+        if (!markers || !markers.length) return;
+        var changed = false;
+        for (var i = 0; i < markers.length; i++) {
+          var m = markers[i];
+          var key = sessionKeyForMarker(m);
+          if (sessionSeenMap[key]) continue;
+          sessionSeenMap[key] = {
+            kind: m.kind === 'qr' ? 'qr' : 'tag',
+            id: m.kind === 'qr' ? String(m.id || '') : Number(m.id)
+          };
+          sessionSeenOrder.push(key);
+          changed = true;
+        }
+        if (changed) renderSessionSeenLine();
+      }
+
+      function renderSessionSeenLine() {
+        if (!sessionSeenLine) return;
+        if (!sessionSeenOrder.length) {
+          sessionSeenLine.innerHTML = '';
+          lastSessionSeenHtml = '';
+          return;
+        }
+        var parts = [];
+        for (var i = 0; i < sessionSeenOrder.length; i++) {
+          parts.push(markerHtml(sessionSeenMap[sessionSeenOrder[i]], 48));
+        }
+        var html = 'Seen once this session: <span class="ids">' + parts.join(', ') + '</span>';
+        if (html === lastSessionSeenHtml) return;
+        lastSessionSeenHtml = html;
+        sessionSeenLine.innerHTML = html;
+      }
+
+      function overlayColor(m) {
+        return (m && m.kind === 'qr') ? CI_QR : CI_LIVE;
+      }
+
+      function getQrReader() {
+        if (qrReader) return qrReader;
+        if (typeof ZXing === 'undefined') return null;
+        var hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+        qrReader = new ZXing.MultiFormatReader();
+        qrReader.setHints(hints);
+        return qrReader;
+      }
+
+      /** Expand finder-centre quad out to roughly the outer QR module edge. */
+      function expandQrCorners(corners, factor) {
+        var cx = 0, cy = 0, i;
+        for (i = 0; i < corners.length; i++) {
+          cx += corners[i].x;
+          cy += corners[i].y;
+        }
+        cx /= corners.length;
+        cy /= corners.length;
+        var out = [];
+        for (i = 0; i < corners.length; i++) {
+          out.push({
+            x: cx + (corners[i].x - cx) * factor,
+            y: cy + (corners[i].y - cy) * factor
+          });
+        }
+        return out;
+      }
+
+      /** ZXing returns 3 finder centres for QR; reconstruct + expand to outer edge. */
+      function cornersFromQrPoints(points, scaleX, scaleY) {
+        if (!points || points.length < 3) return null;
+        var pts = [];
+        for (var i = 0; i < points.length; i++) {
+          pts.push({
+            x: points[i].getX() * scaleX,
+            y: points[i].getY() * scaleY
+          });
+        }
+        // ZXing QR order is typically [bottomLeft, topLeft, topRight]
+        var bl = pts[0], tl = pts[1], tr = pts[2];
+        var br = { x: tr.x + bl.x - tl.x, y: tr.y + bl.y - tl.y };
+        return expandQrCorners([tl, tr, br, bl], QR_CORNER_EXPAND);
+      }
+
+      function imageDataToLuminances(imageData) {
+        var d = imageData.data;
+        var n = imageData.width * imageData.height;
+        var luminances = new Uint8ClampedArray(n);
+        for (var i = 0, j = 0; i < d.length; i += 4, j++) {
+          luminances[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+        }
+        return luminances;
+      }
+
+      /** Downscale ImageData for a cheaper QR pass; returns { luminances, w, h, scaleX, scaleY }. */
+      function prepareQrLuminances(imageData) {
+        var srcW = imageData.width;
+        var srcH = imageData.height;
+        var maxSide = Math.max(srcW, srcH);
+        var scale = maxSide > QR_MAX_SIDE ? (QR_MAX_SIDE / maxSide) : 1;
+        var w = Math.max(1, Math.round(srcW * scale));
+        var h = Math.max(1, Math.round(srcH * scale));
+        if (w === srcW && h === srcH) {
+          return {
+            luminances: imageDataToLuminances(imageData),
+            w: w,
+            h: h,
+            scaleX: 1,
+            scaleY: 1
+          };
+        }
+        var src = imageData.data;
+        var luminances = new Uint8ClampedArray(w * h);
+        for (var y = 0; y < h; y++) {
+          var sy = Math.min(srcH - 1, Math.floor(y / scale));
+          for (var x = 0; x < w; x++) {
+            var sx = Math.min(srcW - 1, Math.floor(x / scale));
+            var si = (sy * srcW + sx) * 4;
+            luminances[y * w + x] = (src[si] * 0.299 + src[si + 1] * 0.587 + src[si + 2] * 0.114) | 0;
+          }
+        }
+        return {
+          luminances: luminances,
+          w: w,
+          h: h,
+          scaleX: srcW / w,
+          scaleY: srcH / h
+        };
+      }
+
+      /** ZXing QR decode (MESS artistic codes work here; jsQR does not). One code per pass. */
+      function detectQrMarkers(imageData) {
+        var reader = getQrReader();
+        if (!reader || !imageData) return [];
+        var prep = prepareQrLuminances(imageData);
+        var source = new ZXing.RGBLuminanceSource(prep.luminances, prep.w, prep.h);
+        var result = null;
+        try {
+          result = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(source)));
+        } catch (e) {
+          try {
+            result = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(source.invert())));
+          } catch (e2) {
+            result = null;
+          }
+        } finally {
+          reader.reset();
+        }
+        if (!result) return [];
+        var corners = cornersFromQrPoints(result.getResultPoints(), prep.scaleX, prep.scaleY);
+        if (!corners) return [];
+        return [{
+          id: result.getText() || '',
+          kind: 'qr',
+          corners: corners
+        }];
+      }
+
+      function sortMarkers(markers) {
+        return markers.slice().sort(function (a, b) {
+          var aq = a && a.kind === 'qr' ? 1 : 0;
+          var bq = b && b.kind === 'qr' ? 1 : 0;
+          if (aq !== bq) return aq - bq;
+          if (aq) return String(a.id).localeCompare(String(b.id));
+          return Number(a.id) - Number(b.id);
+        });
       }
 
       function drawTrace(ctx, w, h) {
@@ -435,9 +681,11 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         for (var i = 0; i < markers.length; i++) {
-          var c = markers[i].corners;
+          var m = markers[i];
+          var c = m.corners;
           if (!c || c.length < 4) continue;
-          ctx.strokeStyle = 'rgb(' + CI_LIVE.r + ',' + CI_LIVE.g + ',' + CI_LIVE.b + ')';
+          var col = overlayColor(m);
+          ctx.strokeStyle = 'rgb(' + col.r + ',' + col.g + ',' + col.b + ')';
           ctx.beginPath();
           ctx.moveTo(c[0].x, c[0].y);
           for (var j = 1; j < c.length; j++) ctx.lineTo(c[j].x, c[j].y);
@@ -445,12 +693,12 @@
           ctx.stroke();
           var cx = (c[0].x + c[1].x + c[2].x + c[3].x) / 4;
           var cy = (c[0].y + c[1].y + c[2].y + c[3].y) / 4;
-          var label = String(Number(markers[i].id));
+          var label = markerLabel(m);
           var metrics = ctx.measureText(label);
           var pad = 4;
           ctx.fillStyle = 'rgba(0,0,0,0.75)';
           ctx.fillRect(cx - metrics.width / 2 - pad, cy - 10, metrics.width + pad * 2, 20);
-          ctx.fillStyle = 'rgb(' + CI_LIVE.r + ',' + CI_LIVE.g + ',' + CI_LIVE.b + ')';
+          ctx.fillStyle = 'rgb(' + col.r + ',' + col.g + ',' + col.b + ')';
           ctx.fillText(label, cx, cy);
         }
       }
@@ -518,6 +766,14 @@
         }
       }
 
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
       function updateMarkersList(markers) {
         if (!markersLine) return;
         if (markers === null) {
@@ -525,10 +781,17 @@
           lastMarkerIds = '';
           return;
         }
-        var ids = (markers && markers.length) ? markers.map(function(m) { return m.id; }).sort(function(a,b){ return a - b; }).join(', ') : '';
-        if (ids === lastMarkerIds) return;
-        lastMarkerIds = ids;
-        markersLine.innerHTML = ids ? 'Detected: <span class="ids">' + ids + '</span>' : '';
+        rememberSessionMarkers(markers);
+        var html = '';
+        var idsKey = '';
+        if (markers && markers.length) {
+          var sorted = sortMarkers(markers);
+          idsKey = sorted.map(function (m) { return markerLabel(m); }).join(', ');
+          html = 'Detected: <span class="ids">' + sorted.map(function (m) { return markerHtml(m, 28); }).join(', ') + '</span>';
+        }
+        if (idsKey === lastMarkerIds) return;
+        lastMarkerIds = idsKey;
+        markersLine.innerHTML = html;
       }
 
       var tickSkip = 0;
@@ -579,9 +842,28 @@
             aprilTagGrayPixels = n;
           }
           imageDataToGray(imageData, aprilTagGrayBuffer);
-          markers = aprilTagDetector.detect(aprilTagGrayBuffer, w, h);
+          markers = aprilTagDetector.detect(aprilTagGrayBuffer, w, h) || [];
         } else {
-          markers = detector.detect(imageData);
+          markers = detector.detect(imageData) || [];
+        }
+        if (detectQr && detectQr.checked) {
+          qrFrameCounter++;
+          if (qrFrameCounter % QR_FRAME_STRIDE === 0) {
+            var foundQr = detectQrMarkers(imageData);
+            if (foundQr && foundQr.length) {
+              lastQrMarkers = foundQr;
+              lastQrSeenAt = now;
+            }
+          }
+          if (lastQrMarkers.length && (now - lastQrSeenAt) <= QR_GHOST_MS) {
+            markers = markers.concat(lastQrMarkers);
+          } else if ((now - lastQrSeenAt) > QR_GHOST_MS) {
+            lastQrMarkers = [];
+          }
+        } else {
+          qrFrameCounter = 0;
+          lastQrMarkers = [];
+          lastQrSeenAt = 0;
         }
         var mirror = mirrorForDetection && mirrorForDetection.checked;
         video.style.transform = mirror ? 'scaleX(-1)' : '';
@@ -663,6 +945,9 @@
         detector = null;
         aprilTagGrayBuffer = null;
         aprilTagGrayPixels = 0;
+        qrFrameCounter = 0;
+        lastQrMarkers = [];
+        lastQrSeenAt = 0;
         lastFpsTime = 0;
         currentFps = 0;
         btnStart.disabled = false;
